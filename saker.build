@@ -1,0 +1,174 @@
+global(VERSION_saker.util) = "0.8.0"
+
+global(TOOLS_OPTIONS) = [
+	{
+		Identifier: jdk8,
+		SourceVersion: RELEASE_8,
+		TargetVersion: RELEASE_8,
+		SDKs: {
+			Java: saker.java.sdk(8),
+		},
+	},
+	{
+		Identifier: jdk9,
+		SDKs: {
+			Java: saker.java.sdk(9),
+		},
+	},
+]
+
+static(VERSION_saker.build) = nest.dependency.resolve(
+	saker.build,
+	Filters: nest.dependency.filter.kind([]),
+)[Bundles][0][BundleIdentifier][VersionNumber]
+
+static(TARGET_JDKS) = [
+	{
+		Id: jdk8,
+		Major: 8,
+	},
+	{
+		Id: jdk9,
+		Major: 9,
+	},
+]
+
+compile(
+	in jdk = jdk8,
+	out javac,
+) {
+	$javac = saker.java.compile(
+		SourceDirectories: [
+			src/common, 
+			"src/{ $jdk }"
+		],
+		ClassPath: [
+			saker.java.classpath.bundle(nest.dependency.resolve(
+				[
+					saker.rmi-api,
+					saker.apiextract-api,
+				],
+				Filters: nest.dependency.filter.compile(CompileTransitive: false)
+			))
+		],
+		Identifier: "main-{ $jdk }",
+		CompilerOptions: global(TOOLS_OPTIONS)
+	)
+}
+export(
+	out javac,
+	out jar,
+	out sourcesjar,
+){
+	$multireleasecontents = foreach $jdk in static(TARGET_JDKS) with 
+			$compile = include(compile, jdk: $jdk[Id]),
+			$javac = $compile[javac] : {
+		$jdk[Major]: {
+			Resources: [
+				{
+					Directory: $javac[ClassDirectory],
+					Resources: **
+				}
+			]
+		}
+	}
+	
+	$compile = include(compile)
+	$javac = $compile[javac]
+	$jar = saker.jar.create(
+		Output: saker.util.jar,
+		Resources: [
+			{
+				Directory: res/,
+				Resources: **,
+			}
+		],
+		MultiReleaseContents: $multireleasecontents,
+		Manifest: {
+			MainAttributes: {
+				Nest-Bundle-Format-Version: 1,
+				Nest-Bundle-Identifier: "saker.util-v{ global(VERSION_saker.util) }",
+				Nest-Bundle-Source: "saker.util-sources-v{ global(VERSION_saker.util) }",
+			},
+		},
+	)
+	$sourcesjar = saker.jar.create(
+		Output: saker.util-sources.jar,
+		MultiReleaseContents: {
+			8: {
+				Resources: [
+					{
+						Directory: [
+							src/jdk8/,
+							src/common,
+						],
+						Resources: **/*.java,
+					}
+				]
+			},
+			9: {
+				Resources: [
+					{
+						Directory: src/jdk9/,
+						Resources: **/*.java,
+					}
+				]
+			},
+		},
+		Manifest: {
+			MainAttributes: {
+				Nest-Bundle-Format-Version: 1,
+				Nest-Bundle-Identifier: "saker.util-sources-v{ global(VERSION_saker.util) }",
+			},
+		},
+	)
+}
+install(){
+	$export = include(export)
+	nest.local.install([
+		$export[jar][Path],
+		$export[sourcesjar][Path],
+	])
+}
+
+test(){
+	# TODO remove saker.build-test-utils dependency
+	$compile = include(compile)
+	$testcompile = saker.java.compile(
+		SourceDirectories: test/src/,
+		ClassPath: [
+			$compile[javac],
+			saker.java.classpath.bundle([
+				"saker.build-test-runner-v{ static(VERSION_saker.build) }",
+				"saker.build-test-utils-v{ static(VERSION_saker.build) }",
+			]),
+		],
+		Identifier: tests
+	)
+	
+	$test = saker.java.test(
+		TestRunnerClassPath: [
+			saker.java.classpath.bundle("saker.build-test-runner-v{ static(VERSION_saker.build) }"),
+		],
+		ClassPath: $compile[javac],
+		TestInvokerClass: testing.saker.SakerJavaTestingInvoker,
+		TestClassPath: [
+			$testcompile[ClassDirectory],
+			saker.java.classpath.bundle([
+				"saker.build-test-utils-v{ static(VERSION_saker.build) }",
+			]),
+		],
+		TestClasses: [
+			**.*Test
+		],
+		NonDeterministicTests: **,
+		TestInvokerParameters: {
+			TimeoutMillis: 120000,
+		},
+		WorkingDirectory: test/resources/,
+		MaxJVMCount: 1,
+		FailFast: true,
+		AbortOnFail: true,
+		Verbose: true,
+	)
+}
