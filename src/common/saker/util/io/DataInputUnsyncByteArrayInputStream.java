@@ -14,7 +14,7 @@ import saker.util.ArrayUtils;
  * 
  * @see DataOutputUnsyncByteArrayOutputStream
  */
-public class DataInputUnsyncByteArrayInputStream extends UnsyncByteArrayInputStream implements DataInput {
+public class DataInputUnsyncByteArrayInputStream extends UnsyncByteArrayInputStream implements DataInputByteSource {
 
 	/**
 	 * Creates a new stream that is backed by the argument buffer.

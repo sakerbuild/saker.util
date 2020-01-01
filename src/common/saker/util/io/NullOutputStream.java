@@ -1,10 +1,9 @@
 package saker.util.io;
 
 import java.io.IOException;
-import java.io.ObjectOutput;
 import java.io.OutputStream;
 
-final class NullOutputStream extends OutputStream implements ObjectOutput, ByteSink, Appendable {
+final class NullOutputStream extends OutputStream implements ObjectOutputByteSink, Appendable {
 	public static final NullOutputStream INSTANCE = new NullOutputStream();
 
 	private NullOutputStream() {
