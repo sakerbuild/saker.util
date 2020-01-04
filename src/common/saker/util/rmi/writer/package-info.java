@@ -20,3 +20,4 @@
 package saker.util.rmi.writer;
 
 import saker.apiextract.api.PublicApi;
+import saker.rmi.io.writer.RMIObjectWriteHandler;

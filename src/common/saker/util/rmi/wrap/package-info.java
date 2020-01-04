@@ -20,3 +20,4 @@
 package saker.util.rmi.wrap;
 
 import saker.apiextract.api.PublicApi;
+import saker.rmi.io.wrap.RMIWrapper;
