@@ -81,7 +81,11 @@ export(
 			{
 				Directory: res/,
 				Resources: **,
-			}
+			},
+			{
+				Files: LICENSE,
+				TargetDirectory: META-INF,
+			},
 		],
 		MultiReleaseContents: $multireleasecontents,
 		Manifest: {
@@ -103,7 +107,11 @@ export(
 							src/common,
 						],
 						Resources: **/*.java,
-					}
+					},
+					{
+						Files: LICENSE,
+						TargetDirectory: META-INF,
+					},
 				]
 			},
 			9: {
