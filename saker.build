@@ -59,6 +59,11 @@ export(
 	out javac,
 	out jar,
 	out sourcesjar,
+	
+	out bundlepaths = [
+		$jar[Path],
+		$sourcesjar[Path],
+	],
 ){
 	$multireleasecontents = foreach $jdk in static(TARGET_JDKS) with 
 			$compile = include(compile, jdk: $jdk[Id]),
@@ -133,12 +138,18 @@ export(
 }
 install(){
 	$export = include(export)
-	nest.local.install([
-		$export[jar][Path],
-		$export[sourcesjar][Path],
-	])
+	nest.local.install($export[bundlepaths])
 }
-
+upload() {
+	$export = include(export, Path: saker.build)
+	include(Path: secret/secrets.build)
+	nest.server.upload(
+		Bundles: $export[bundlepaths],
+		APIKey: global(saker.util.UPLOAD_API_KEY),
+		APISecret: global(saker.util.UPLOAD_API_SECRET),
+		Overwrite: true,
+	)
+}
 test(){
 	# TODO remove saker.build-test-utils dependency
 	$compile = include(compile)

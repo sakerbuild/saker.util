@@ -4,3 +4,5 @@
 /.project
 /.classpath
 /.saker.build.ideconfigs
+secret/**
+!secret/readme.md
