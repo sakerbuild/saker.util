@@ -1,5 +1,7 @@
 # saker.util
 
+![Build status](https://img.shields.io/azure-devops/build/sakerbuild/6bb2b4fa-d3da-44b0-85ad-b3e21ea3bab6/10/master)
+
 General Java utilities library. The library contains various functions and classes that may be useful when developing applications.
 
 The library is also included in the [saker.build system](https://saker.build) under the `saker.build.thirdparty` package.
