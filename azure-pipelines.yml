@@ -7,7 +7,7 @@ pool:
 steps:
 - script: curl -s https://api.nest.saker.build/bundle/download/saker.build-v0.8.0 -o saker.build.jar
   displayName: 'Download saker.build'
-- script: java -jar saker.build.jar -bd build test
+- script: java -jar saker.build.jar -bd build "-EUsaker.java.jre.install.locations=${JAVA_HOME};${JAVA_HOME_11_X64}" test
   displayName: 'Test'  
-- script: java -jar saker.build.jar -bd build export
+- script: java -jar saker.build.jar -bd build "-EUsaker.java.jre.install.locations=${JAVA_HOME};${JAVA_HOME_11_X64}" export
   displayName: 'Export'
