@@ -48,8 +48,15 @@ public class ThreadUtilsExceptionTest extends SakerTestCase {
 		assertException(ParallelExecutionFailedException.class,
 				() -> ThreadUtils.runParallelRunnables(failer, failer, failer, failer, failer, failer));
 
-		assertException(ParallelExecutionFailedException.class, () -> ThreadUtils.runParallelRunnables(abortthrowing,
-				abortthrowing, failer, abortthrowing, abortthrowing));
+		try {
+			ThreadUtils.runParallelRunnables(abortthrowing, abortthrowing, failer, abortthrowing, abortthrowing);
+			fail("Failed to catch parallel execution exception.");
+		} catch (ParallelExecutionFailedException | ParallelExecutionAbortedException e) {
+			// good, expected any of these
+		} catch (Throwable e) {
+			// bad, unexpected
+			fail(e);
+		}
 	}
 
 }
