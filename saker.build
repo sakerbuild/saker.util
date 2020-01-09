@@ -12,9 +12,8 @@ global(TOOLS_OPTIONS) = [
 	{
 		Identifier: jdk9,
 		SDKs: {
-			Java: saker.java.sdk([9, 10, 11, 12, 13]),
+			Java: saker.java.sdk(9),
 		},
-		Parameters: [ --release, 9 ],
 	},
 ]
 
