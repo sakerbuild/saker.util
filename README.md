@@ -1,6 +1,6 @@
 # saker.util
 
-![Build status](https://img.shields.io/azure-devops/build/sakerbuild/6bb2b4fa-d3da-44b0-85ad-b3e21ea3bab6/10/master)
+![Build status](https://img.shields.io/azure-devops/build/sakerbuild/6bb2b4fa-d3da-44b0-85ad-b3e21ea3bab6/10/master) [![Latest version](https://mirror.nest.saker.build/badges/saker.util/version.svg)](https://nest.saker.build/package/saker.util "saker.util | saker.nest")
 
 General Java utilities library. The library contains various functions and classes that may be useful when developing applications.
 
