@@ -2111,6 +2111,12 @@ public class ImmutableUtils {
 			return null;
 		}
 
+		@SuppressWarnings("unchecked")
+		@Override
+		public final boolean containsKey(Object key) {
+			return getComparator().compare(this.key, (K) key) == 0;
+		}
+
 		@Override
 		public final SortedMap<K, V> subMap(K fromKey, K toKey) {
 			Comparator<? super K> c = getComparator();
@@ -2432,6 +2438,12 @@ public class ImmutableUtils {
 		@Override
 		public Comparator<? super E> comparator() {
 			return null;
+		}
+
+		@SuppressWarnings("unchecked")
+		@Override
+		public final boolean contains(Object o) {
+			return getComparator().compare((E) o, this.elem) == 0;
 		}
 
 		@Override

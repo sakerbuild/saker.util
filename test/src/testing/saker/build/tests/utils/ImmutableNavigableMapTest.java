@@ -38,6 +38,9 @@ public class ImmutableNavigableMapTest extends SakerTestCase {
 
 		test(actualmap, ImmutableUtils.unmodifiableNavigableMap(actualmap), -5, 20);
 		test(actualmap, ImmutableUtils.makeImmutableNavigableMap(actualmap), -5, 20);
+
+		assertEquals(ImmutableUtils.singletonNavigableMap("a", 1, String::compareToIgnoreCase).get("A"), 1);
+		assertEquals(ImmutableUtils.singletonNavigableMap("a", 1, String::compareToIgnoreCase).get("a"), 1);
 	}
 
 	protected static void test(NavigableMap<Integer, String> actualmap, NavigableMap<Integer, String> map, int start,

@@ -36,6 +36,9 @@ public class ImmutableNavigableSetTest extends SakerTestCase {
 
 		testSets(actualset, ImmutableUtils.unmodifiableNavigableSet(actualset.toArray(new Integer[0])), -5, 20);
 		testSets(actualset, ImmutableUtils.makeImmutableNavigableSet(actualset.toArray(new Integer[0])), -5, 20);
+
+		assertTrue(ImmutableUtils.singletonNavigableSet("a", String::compareToIgnoreCase).contains("A"));
+		assertTrue(ImmutableUtils.singletonNavigableSet("a", String::compareToIgnoreCase).contains("a"));
 	}
 
 	protected static void testSets(NavigableSet<Integer> actualset, NavigableSet<Integer> set, int start, int end) {
