@@ -39,8 +39,8 @@ import saker.util.StringUtils;
  * The resolvers are registered with an additional identifier in the registry, which is arbitrary, but should make
  * attempt to uniquely identify the resolver itself. Only one resolver can be registered with a specific identifier.
  * <p>
- * The registry can be constructed with a default resolver, which is going to be called when no registered resolvers
- * succeeded to match a resolve request.
+ * The registry can be constructed with a default resolver, which is called before the registered resolvers to match a
+ * resolve request.
  * <p>
  * This class is thread safe, registering and unregistering can be done concurrently from multiple threads.
  */
@@ -154,6 +154,12 @@ public class ClassLoaderResolverRegistry implements ClassLoaderResolver {
 
 	@Override
 	public String getClassLoaderIdentifier(ClassLoader cl) {
+		if (defaultResolver != null) {
+			String defaultresolverid = defaultResolver.getClassLoaderIdentifier(cl);
+			if (defaultresolverid != null) {
+				return ID_SEPARATOR_CHARACTER + defaultresolverid;
+			}
+		}
 		for (Iterator<? extends Entry<String, ? extends Reference<? extends ClassLoaderResolver>>> it = resolvers
 				.entrySet().iterator(); it.hasNext();) {
 			Entry<String, ? extends Reference<? extends ClassLoaderResolver>> entry = it.next();
@@ -165,12 +171,6 @@ public class ClassLoaderResolverRegistry implements ClassLoaderResolver {
 			String id = resolver.getClassLoaderIdentifier(cl);
 			if (id != null) {
 				return entry.getKey() + ID_SEPARATOR_CHARACTER + id;
-			}
-		}
-		if (defaultResolver != null) {
-			String defaultresolverid = defaultResolver.getClassLoaderIdentifier(cl);
-			if (defaultresolverid != null) {
-				return ID_SEPARATOR_CHARACTER + defaultresolverid;
 			}
 		}
 		return null;
