@@ -150,7 +150,9 @@ upload() {
 		Overwrite: true,
 	)
 }
-test(){
+test(
+	in jreversion = 8,
+){
 	# TODO remove saker.build-test-utils dependency
 	$compile = include(compile)
 	$testcompile = saker.java.compile(
@@ -189,5 +191,12 @@ test(){
 		FailFast: true,
 		AbortOnFail: true,
 		Verbose: true,
+		JavaSDK: saker.java.sdk($jreversion),
+	)
+}
+testjava9(){
+	include(
+		test, 
+		jreversion: 9,
 	)
 }

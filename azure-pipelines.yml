@@ -4,17 +4,47 @@ trigger:
 pool:
   vmImage: 'ubuntu-latest'
 
-steps:
-- script: curl https://api.nest.saker.build/bundle/download/saker.build-v$(curl -s https://mirror.nest.saker.build/badges/saker.build/latest.txt) -o saker.build.jar
-  displayName: 'Download saker.build'
-- script: |
-    set -e
-    curl -s https://gist.githubusercontent.com/Sipkab/f71ecb5e2167a2b0fced6736d703b8a5/raw/azure_ubuntu_jdksetup.sh -o /tmp/azure_ubuntu_jdksetup.sh
-    echo "##vso[task.setvariable variable=JAVA_HOME_8_X64]$(bash /tmp/azure_ubuntu_jdksetup.sh 8)" &
-    echo "##vso[task.setvariable variable=JAVA_HOME_9_X64]$(bash /tmp/azure_ubuntu_jdksetup.sh 9)" &
-    wait < <(jobs -p)
-  displayName: 'Setup JDKs'
-- script: java -jar saker.build.jar -bd build "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64)" test
-  displayName: 'Test'  
-- script: java -jar saker.build.jar -bd build "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64)" export
-  displayName: 'Export'
+jobs:
+- job: jdk8
+  steps:
+  - script: curl https://api.nest.saker.build/bundle/download/saker.build-v$(curl -s https://mirror.nest.saker.build/badges/saker.build/latest.txt) -o saker.build.jar
+    displayName: 'Download saker.build'
+  - script: |
+      set -e
+      curl -s https://gist.githubusercontent.com/Sipkab/1505a8659af20003ae09295e99d3cba3/raw/azure_ubuntu_jdksetup_variables.sh -o /tmp/azure_ubuntu_jdksetup_variables.sh
+      bash /tmp/azure_ubuntu_jdksetup_variables.sh 8 9
+    displayName: 'Setup JDKs'
+  - script: java -jar saker.build.jar -bd build "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64)" -trace pwd://build/build_test.trace test
+    displayName: 'Test JDK 8'
+  - task: PublishBuildArtifacts@1
+    condition: always()
+    displayName: 'Publish test trace'
+    inputs:
+      pathtoPublish: build/build_test.trace
+      artifactName: trace
+  - script: java -jar saker.build.jar -bd build "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64)" -trace pwd://build/build_export.trace export
+    displayName: 'Export'
+  - task: PublishBuildArtifacts@1
+    condition: always()
+    displayName: 'Publish export trace'
+    inputs:
+      pathtoPublish: build/build_export.trace
+      artifactName: trace
+
+- job: jdk9
+  steps:
+  - script: curl https://api.nest.saker.build/bundle/download/saker.build-v$(curl -s https://mirror.nest.saker.build/badges/saker.build/latest.txt) -o saker.build.jar
+    displayName: 'Download saker.build'
+  - script: |
+      set -e
+      curl -s https://gist.githubusercontent.com/Sipkab/1505a8659af20003ae09295e99d3cba3/raw/azure_ubuntu_jdksetup_variables.sh -o /tmp/azure_ubuntu_jdksetup_variables.sh
+      bash /tmp/azure_ubuntu_jdksetup_variables.sh 8 9
+    displayName: 'Setup JDKs'
+  - script: java -jar saker.build.jar -bd build "-EUsaker.java.jre.install.locations=$(JAVA_HOME_8_X64);$(JAVA_HOME_9_X64)" -trace pwd://build/build_test.trace testjava9
+    displayName: 'Test JDK 9'
+  - task: PublishBuildArtifacts@1
+    condition: always()
+    displayName: 'Publish test trace'
+    inputs:
+      pathtoPublish: build/build_test.trace
+      artifactName: trace_jdk9
