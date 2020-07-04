@@ -46,6 +46,7 @@ public class AsyncOutputStreamTest extends SakerTestCase {
 				}
 			}
 		});
+		runnerthread.start();
 		IOUtils.throwExc(runnerthread.joinGetException());
 		threadgroup.destroy();
 	}

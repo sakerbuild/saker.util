@@ -28,7 +28,9 @@ import java.util.Objects;
 import java.util.ServiceConfigurationError;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.LockSupport;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -909,7 +911,7 @@ public class ThreadUtils {
 	/**
 	 * Sets the default thread factor that newly created concurrent runners should use.
 	 * <p>
-	 * The default thread factor is set to an {@linkplain InheritableThreadLocal inheritable thrad local} variable,
+	 * The default thread factor is set to an {@linkplain InheritableThreadLocal inheritable thread local} variable,
 	 * therefore any value set here will be propagated to all started threads.
 	 * <p>
 	 * It is recommended that the thread factor is at least 2.
@@ -1472,7 +1474,14 @@ public class ThreadUtils {
 		return MONITOR_INSTANCE_NEVER_CANCELLED;
 	}
 
-	private static int getDefaultThreadFactor() {
+	/**
+	 * Gets the default thread concurrency factor.
+	 * 
+	 * @return The thread factor.
+	 * @see #setInheritableDefaultThreadFactor(int)
+	 * @since saker.util 0.8.2
+	 */
+	public static int getDefaultThreadFactor() {
 		return DEFAULT_THREAD_FACTOR.get();
 	}
 
@@ -1494,20 +1503,7 @@ public class ThreadUtils {
 		if (it == null) {
 			return null;
 		}
-		return new Supplier<T>() {
-			@SuppressWarnings("unchecked")
-			@Override
-			public synchronized T get() {
-				if (!it.hasNext()) {
-					return null;
-				}
-				T n = it.next();
-				if (n == null) {
-					return (T) SUPPLIER_NULL_ELEMENT_PLACEHOLDER;
-				}
-				return n;
-			}
-		};
+		return new IteratorDelegateSupplier<T>(it);
 	}
 
 	private static void throwOnException(ExceptionHoldingSupplier<?> parallelit) throws ParallelExecutionException {
@@ -1897,10 +1893,15 @@ public class ThreadUtils {
 
 	private static class FixedWorkPool implements ThreadWorkPool {
 		private class FixedThreadCountSupplier implements ExceptionHoldingSupplier<ThrowingRunnable> {
+			private final ReentrantLock lock = new ReentrantLock();
+			private final Condition cond = lock.newCondition();
+
 			@Override
 			public ThrowingRunnable get(Thread currentthread) {
 				boolean waitadded = false;
-				synchronized (this) {
+
+				lock.lock();
+				try {
 					while (true) {
 						PoolState s = FixedWorkPool.this.state;
 						if (s.task != null) {
@@ -1934,11 +1935,13 @@ public class ThreadUtils {
 						}
 						try {
 							//wait for some external state change
-							this.wait();
+							cond.await();
 						} catch (InterruptedException e) {
 							cancelled(e);
 						}
 					}
+				} finally {
+					lock.unlock();
 				}
 			}
 
@@ -1948,22 +1951,31 @@ public class ThreadUtils {
 			}
 
 			public void notifyStateChange() {
-				synchronized (this) {
-					this.notifyAll();
+				lock.lock();
+				try {
+					cond.signalAll();
+				} finally {
+					lock.unlock();
 				}
 			}
 
 			public void notifyOffer() {
-				synchronized (this) {
-					this.notify();
+				lock.lock();
+				try {
+					cond.signal();
+				} finally {
+					lock.unlock();
 				}
 			}
 
 			@Override
 			public void aborted(ParallelExecutionAbortedException e) {
 				ARFU_state.updateAndGet(FixedWorkPool.this, s -> s.abortException(e));
-				synchronized (this) {
-					this.notifyAll();
+				lock.lock();
+				try {
+					cond.signalAll();
+				} finally {
+					lock.unlock();
 				}
 			}
 
@@ -2176,7 +2188,8 @@ public class ThreadUtils {
 		private final OperationCancelMonitor monitor;
 		private final ThreadGroup group;
 
-		private final Object threadsStateNotifyLock = new Object();
+		private final ReentrantLock threadsStateNotifyLock = new ReentrantLock();
+		private final Condition threadsStateNotifyCondition = threadsStateNotifyLock.newCondition();
 
 		public FixedWorkPool(ThreadGroup group, int threadCount, OperationCancelMonitor monitor, String nameprefix,
 				boolean daemon) {
@@ -2229,7 +2242,7 @@ public class ThreadUtils {
 		}
 
 		@Override
-		public synchronized void close() throws ParallelExecutionException {
+		public void close() throws ParallelExecutionException {
 			ARFU_state.updateAndGet(this, PoolState::close);
 			parallelSupplier.notifyStateChange();
 
@@ -2237,7 +2250,7 @@ public class ThreadUtils {
 		}
 
 		@Override
-		public synchronized void closeInterruptible() throws ParallelExecutionException, InterruptedException {
+		public void closeInterruptible() throws ParallelExecutionException, InterruptedException {
 			ARFU_state.updateAndGet(this, PoolState::close);
 			parallelSupplier.notifyStateChange();
 
@@ -2245,7 +2258,7 @@ public class ThreadUtils {
 		}
 
 		@Override
-		public synchronized void reset() {
+		public void reset() {
 			ARFU_state.updateAndGet(this, PoolState::reset);
 			parallelSupplier.notifyStateChange();
 
@@ -2253,7 +2266,7 @@ public class ThreadUtils {
 		}
 
 		@Override
-		public synchronized void resetInterruptible() throws InterruptedException {
+		public void resetInterruptible() throws InterruptedException {
 			ARFU_state.updateAndGet(this, PoolState::reset);
 			parallelSupplier.notifyStateChange();
 
@@ -2261,45 +2274,41 @@ public class ThreadUtils {
 		}
 
 		protected void notifyThreadSync() {
-			synchronized (threadsStateNotifyLock) {
-				threadsStateNotifyLock.notifyAll();
+			threadsStateNotifyLock.lock();
+			try {
+				threadsStateNotifyCondition.signalAll();
+			} finally {
+				threadsStateNotifyLock.unlock();
 			}
 		}
 
 		private void waitThreadSync() {
-			boolean interrupted = false;
+			threadsStateNotifyLock.lock();
 			try {
-				synchronized (threadsStateNotifyLock) {
-					while (true) {
-						PoolState s = this.state;
-						if (!s.isAnyTaskRunning()) {
-							if (s.hasException()) {
-								if (ARFU_state.compareAndSet(this, s, s.withoutException())) {
-									ParallelExecutionException exc = s.constructException();
-									throw exc;
-								}
-								//failed to swap the state, retry
-								continue;
+				while (true) {
+					PoolState s = this.state;
+					if (!s.isAnyTaskRunning()) {
+						if (s.hasException()) {
+							if (ARFU_state.compareAndSet(this, s, s.withoutException())) {
+								ParallelExecutionException exc = s.constructException();
+								throw exc;
 							}
-							//no exception, we can just break out of the waiting loop
-							break;
+							//failed to swap the state, retry
+							continue;
 						}
-						try {
-							threadsStateNotifyLock.wait();
-						} catch (InterruptedException e) {
-							interrupted = true;
-						}
+						//no exception, we can just break out of the waiting loop
+						break;
 					}
+					threadsStateNotifyCondition.awaitUninterruptibly();
 				}
 			} finally {
-				if (interrupted) {
-					Thread.currentThread().interrupt();
-				}
+				threadsStateNotifyLock.unlock();
 			}
 		}
 
 		private void waitThreadSyncInterruptible() throws InterruptedException {
-			synchronized (threadsStateNotifyLock) {
+			threadsStateNotifyLock.lock();
+			try {
 				while (true) {
 					PoolState s = this.state;
 					if (!s.isAnyTaskRunning()) {
@@ -2313,8 +2322,10 @@ public class ThreadUtils {
 						//no exception, we can just break out of the waiting loop
 						break;
 					}
-					threadsStateNotifyLock.wait();
+					threadsStateNotifyCondition.await();
 				}
+			} finally {
+				threadsStateNotifyLock.unlock();
 			}
 		}
 	}
@@ -2896,7 +2907,40 @@ public class ThreadUtils {
 		}
 	}
 
+	private static final class IteratorDelegateSupplier<T> implements Supplier<T> {
+		private volatile Iterator<T> it;
+		private ReentrantLock lock = new ReentrantLock();
+
+		private IteratorDelegateSupplier(Iterator<T> it) {
+			this.it = it;
+		}
+
+		@SuppressWarnings("unchecked")
+		@Override
+		public T get() {
+			Iterator<T> iter = it;
+			if (iter == null) {
+				return null;
+			}
+			lock.lock();
+			try {
+				if (!iter.hasNext()) {
+					this.it = null;
+					return null;
+				}
+				T n = iter.next();
+				if (n == null) {
+					return (T) SUPPLIER_NULL_ELEMENT_PLACEHOLDER;
+				}
+				return n;
+			} finally {
+				lock.unlock();
+			}
+		}
+	}
+
 	private ThreadUtils() {
 		throw new UnsupportedOperationException();
 	}
+
 }
