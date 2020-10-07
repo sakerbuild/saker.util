@@ -37,13 +37,13 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 import saker.util.ArrayIterator;
+import saker.util.ConcurrentAppendAccumulator;
 import saker.util.ConcurrentPrependAccumulator;
 import saker.util.DateUtils;
 import saker.util.ImmutableUtils;
 import saker.util.ObjectUtils;
 import saker.util.function.Functionals;
 import saker.util.function.ThrowingRunnable;
-import saker.util.io.IOUtils;
 
 /**
  * Utility class containing functions and classes related to threads and their manipulation.
@@ -1797,7 +1797,10 @@ public class ThreadUtils {
 	}
 
 	private static class DirectWorkPool implements ThreadWorkPool {
-		private ParallelExecutionException exc;
+		@SuppressWarnings("rawtypes")
+		private static final AtomicReferenceFieldUpdater<ThreadUtils.DirectWorkPool, ConcurrentAppendAccumulator> ARFU_exceptions = AtomicReferenceFieldUpdater
+				.newUpdater(ThreadUtils.DirectWorkPool.class, ConcurrentAppendAccumulator.class, "exceptions");
+		private volatile ConcurrentAppendAccumulator<Throwable> exceptions;
 
 		@Override
 		public void offer(ThrowingRunnable task) {
@@ -1806,12 +1809,14 @@ public class ThreadUtils {
 				task.run();
 			} catch (StackOverflowError | OutOfMemoryError | LinkageError | ServiceConfigurationError | AssertionError
 					| Exception e) {
-				synchronized (this) {
-					if (exc == null) {
-						exc = new ParallelExecutionFailedException();
+				ConcurrentAppendAccumulator<Throwable> exc = this.exceptions;
+				if (exc == null) {
+					exc = new ConcurrentAppendAccumulator<>();
+					if (!ARFU_exceptions.compareAndSet(this, null, exc)) {
+						exc = this.exceptions;
 					}
-					exc.addSuppressed(e);
 				}
+				exc.add(e);
 			}
 			//any other exceptions are propagated
 		}
@@ -1841,10 +1846,14 @@ public class ThreadUtils {
 		}
 
 		private void throwAnyException() {
-			synchronized (this) {
-				ParallelExecutionException e = this.exc;
-				this.exc = null;
-				IOUtils.throwExc(e);
+			@SuppressWarnings("unchecked")
+			ConcurrentAppendAccumulator<Throwable> exc = ARFU_exceptions.getAndSet(this, null);
+			if (exc != null) {
+				ParallelExecutionFailedException e = new ParallelExecutionFailedException();
+				for (Throwable t : exc) {
+					e.addSuppressed(t);
+				}
+				throw e;
 			}
 		}
 	}
