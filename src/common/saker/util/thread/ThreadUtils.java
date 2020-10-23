@@ -1935,7 +1935,7 @@ public class ThreadUtils {
 							//the thread pool is closed
 							PoolState exitedstate = s.waitingThreadExits();
 							if (ARFU_state.compareAndSet(FixedWorkPool.this, s, exitedstate)) {
-								this.notifyAll();
+								cond.signalAll();
 								FixedWorkPool.this.notifyThreadSync();
 								return null;
 							}
