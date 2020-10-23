@@ -182,10 +182,10 @@ public class UnsyncByteArrayOutputStream extends OutputStream implements ByteSin
 	 */
 	public int readFrom(ByteSource in, int count) throws IOException {
 		Objects.requireNonNull(in, "in");
-		ensureCapacity(this.count + count);
 		if (count <= 0) {
 			return 0;
 		}
+		ensureCapacity(this.count + count);
 		int totalread = 0;
 		while (totalread < count) {
 			int read = in.read(ByteArrayRegion.wrap(buf, this.count, count - totalread));
