@@ -57,4 +57,14 @@ class Reflector {
 				declaringClass);
 	}
 
+	static Object getModule(Class<?> type) {
+		if (type == null) {
+			return null;
+		}
+		return type.getModule();
+	}
+	
+	public static Class<?> lookupAccessClass(MethodHandles.Lookup lookup, Class<?> type) {
+		return lookup.accessClass(type);
+	}
 }
