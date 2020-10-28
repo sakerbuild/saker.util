@@ -66,7 +66,7 @@ export(
 	],
 ){
 	$multireleasecontents = foreach $jdk in static(TARGET_JDKS) with 
-			$compile = include(compile, jdk: $jdk[Id]),
+			$compile = compile(jdk: $jdk[Id]),
 			$javac = $compile[javac] : {
 		$jdk[Major]: {
 			Resources: [
@@ -78,7 +78,7 @@ export(
 		}
 	}
 	
-	$compile = include(compile)
+	$compile = compile()
 	$javac = $compile[javac]
 	$jar = saker.jar.create(
 		Output: saker.util.jar,
@@ -137,7 +137,7 @@ export(
 	)
 }
 install(){
-	$export = include(export)
+	$export = export()
 	nest.local.install($export[bundlepaths])
 }
 upload() {
@@ -154,7 +154,7 @@ test(
 	in jreversion = 8,
 ){
 	# TODO remove saker.build-test-utils dependency
-	$compile = include(compile)
+	$compile = compile()
 	$testcompile = saker.java.compile(
 		SourceDirectories: test/src/,
 		ClassPath: [
@@ -194,9 +194,27 @@ test(
 		JavaSDK: saker.java.sdk($jreversion),
 	)
 }
+testjava8(){
+	test(jreversion: 8)
+}
 testjava9(){
-	include(
-		test, 
-		jreversion: 9,
-	)
+	test(jreversion: 9)
+}
+testjava10(){
+	test(jreversion: 10)
+}
+testjava11(){
+	test(jreversion: 11)
+}
+testjava12(){
+	test(jreversion: 12)
+}
+testjava13(){
+	test(jreversion: 13)
+}
+testjava14(){
+	test(jreversion: 14)
+}
+testjava15(){
+	test(jreversion: 15)
 }
