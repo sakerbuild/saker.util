@@ -52,9 +52,10 @@ class Reflector {
 		throw new UnsupportedOperationException();
 	}
 
-	static MethodHandle getDefaultMethodHandle(Method method, Class<?> declaringClass) throws ReflectiveOperationException {
-		return MethodHandles.lookup().findSpecial(declaringClass, method.getName(), MethodType.methodType(method.getReturnType(), method.getParameterTypes()),
-				declaringClass);
+	static MethodHandle getDefaultMethodHandle(Method method, Class<?> declaringClass)
+			throws ReflectiveOperationException {
+		return MethodHandles.lookup().findSpecial(declaringClass, method.getName(),
+				MethodType.methodType(method.getReturnType(), method.getParameterTypes()), declaringClass);
 	}
 
 	static Object getModule(Class<?> type) {
@@ -63,8 +64,8 @@ class Reflector {
 		}
 		return type.getModule();
 	}
-	
-	public static Class<?> lookupAccessClass(MethodHandles.Lookup lookup, Class<?> type) {
+
+	public static Class<?> lookupAccessClass(MethodHandles.Lookup lookup, Class<?> type) throws IllegalAccessException {
 		return lookup.accessClass(type);
 	}
 }
