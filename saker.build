@@ -164,7 +164,8 @@ test(
 				"saker.build-test-utils-v{ static(VERSION_saker.build) }",
 			]),
 		],
-		Identifier: tests
+		Identifier: tests,
+		CompilerOptions: global(TOOLS_OPTIONS),
 	)
 	
 	$test = saker.java.test(
