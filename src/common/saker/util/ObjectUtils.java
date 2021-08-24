@@ -5319,6 +5319,20 @@ public class ObjectUtils {
 	}
 
 	/**
+	 * Backports {@link Reference}{@code .reachabilityFence(Object)} to Java 8.
+	 * <p>
+	 * This method does nothing at all with the argument object.
+	 * <p>
+	 * On Java 8, it is simply an empty method. On Java 9+ it calls {@link Reference}{@code .reachabilityFence(Object)}.
+	 * 
+	 * @param o
+	 *            An object reference.
+	 */
+	public static void reachabilityFence(Object o) {
+		Reflector.reachabilityFence(o);
+	}
+
+	/**
 	 * Gets the enumeration type of the argument {@link EnumMap}.
 	 * <p>
 	 * The method will retrieve the first key of the map and return the enum class of it. The method handles if the enum
