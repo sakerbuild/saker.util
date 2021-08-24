@@ -167,6 +167,7 @@ test(
 		],
 		Identifier: tests,
 		CompilerOptions: global(TOOLS_OPTIONS),
+		TargetVersion: RELEASE_8,
 	)
 	
 	$test = saker.java.test(
