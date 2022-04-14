@@ -1618,7 +1618,7 @@ public class ThreadUtils {
 
 	private static <R extends Reference<? extends Thread>> void joinClearParallelThreadsNonInterruptibleRef(
 			ConcurrentPrependAccumulator<R> threads) {
-		Thread ct = Thread.currentThread();
+		final Thread ct = Thread.currentThread();
 		boolean interrupted = false;
 		for (R tref; (tref = threads.take()) != null;) {
 			Thread t = tref.get();
@@ -1639,13 +1639,13 @@ public class ThreadUtils {
 		}
 		if (interrupted) {
 			//if we were interrupted, set the flag again
-			Thread.currentThread().interrupt();
+			ct.interrupt();
 		}
 	}
 
 	private static <R extends Reference<? extends Thread>> void joinClearParallelThreadsRefInterruptible(
 			ConcurrentPrependAccumulator<R> threads) throws InterruptedException {
-		Thread ct = Thread.currentThread();
+		final Thread ct = Thread.currentThread();
 		for (R tref; (tref = threads.take()) != null;) {
 			Thread t = tref.get();
 			if (t == null) {
@@ -1668,7 +1668,7 @@ public class ThreadUtils {
 
 	private static <T, R extends Reference<? extends Thread>> void joinClearParallelThreadsRef(
 			ConcurrentPrependAccumulator<R> threads, ExceptionHoldingSupplier<T> ehit) {
-		Thread ct = Thread.currentThread();
+		final Thread ct = Thread.currentThread();
 		boolean interrupted = false;
 		for (R tref; (tref = threads.take()) != null;) {
 			Thread t = tref.get();
@@ -1704,7 +1704,7 @@ public class ThreadUtils {
 		}
 		if (interrupted) {
 			//if we were interrupted, set the flag again
-			Thread.currentThread().interrupt();
+			ct.interrupt();
 			if (!ehit.isAllTasksProcessed()) {
 				ehit.cancelled("Interrupted.");
 			}
@@ -1713,7 +1713,7 @@ public class ThreadUtils {
 
 	private static <T, C> void joinParallelThreads(Function<Integer, WorkerThread<T, C>> threadindexer, int count,
 			ExceptionHoldingSupplier<T> ehit) {
-		Thread ct = Thread.currentThread();
+		final Thread ct = Thread.currentThread();
 		boolean interrupted = false;
 		for (int i = 0; i < count; i++) {
 			WorkerThread<T, C> t = threadindexer.apply(i);
@@ -1740,7 +1740,7 @@ public class ThreadUtils {
 		}
 		if (interrupted) {
 			//if we were interrupted, set the flag again
-			Thread.currentThread().interrupt();
+			ct.interrupt();
 			if (!ehit.isAllTasksProcessed()) {
 				ehit.cancelled("Interrupted.");
 			}
@@ -1752,7 +1752,7 @@ public class ThreadUtils {
 		if (!it.hasNext()) {
 			return;
 		}
-		Thread ct = Thread.currentThread();
+		final Thread ct = Thread.currentThread();
 		do {
 			Thread t = it.next();
 			if (t == null) {
@@ -1771,7 +1771,7 @@ public class ThreadUtils {
 		if (!it.hasNext()) {
 			return;
 		}
-		Thread ct = Thread.currentThread();
+		final Thread ct = Thread.currentThread();
 		boolean interrupted = false;
 		do {
 			Thread t = it.next();
@@ -1792,7 +1792,7 @@ public class ThreadUtils {
 		} while (it.hasNext());
 		if (interrupted) {
 			//if we were interrupted, set the flag again
-			Thread.currentThread().interrupt();
+			ct.interrupt();
 		}
 	}
 
