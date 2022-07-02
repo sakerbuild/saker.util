@@ -779,6 +779,29 @@ public class ThreadUtils {
 	}
 
 	/**
+	 * Joins the argument thread.
+	 * <p>
+	 * This is a single {@link Thread} parameter overload of {@link #joinThreads(Thread...)}.
+	 * 
+	 * @param thread
+	 *            The thread to join. May be <code>null</code>, in which case this function call is a no-op.
+	 * @throws InterruptedException
+	 *             If the current thread was interrupted while joining.
+	 * @throws IllegalThreadStateException
+	 *             If the argument is the current thread. (I.e. the thread tries to join itself)
+	 */
+	public static void joinThreads(Thread thread) throws InterruptedException, IllegalThreadStateException {
+		if (thread == null) {
+			return;
+		}
+		final Thread ct = Thread.currentThread();
+		if (thread == ct) {
+			throw new IllegalThreadStateException("Trying to join current thread.");
+		}
+		thread.join();
+	}
+
+	/**
 	 * Joins the argument threads.
 	 * <p>
 	 * If this method finishes successfully, all the arguments thread will be in a finished state.
@@ -816,6 +839,43 @@ public class ThreadUtils {
 		}
 		Objects.requireNonNull(threads, "threads");
 		joinThreadsImpl(threads.iterator());
+	}
+
+	/**
+	 * Joins the argument thread non-interruptibly.
+	 * <p>
+	 * If the current thread is interrupted while joining, the interrupt flag is stored, and the joining will continue.
+	 * If the thread was interrupted, it will be reinterrupted at the end of the method.
+	 * <p>
+	 * This is a single {@link Thread} parameter overload of {@link #joinThreadsNonInterruptible(Thread...)}.
+	 * 
+	 * @param thread
+	 *            The thread to join. May be <code>null</code>, in which case this function call is a no-op.
+	 * @throws IllegalThreadStateException
+	 *             If the argument is the current thread. (I.e. the thread tries to join itself)
+	 */
+	public static void joinThreadsNonInterruptible(Thread thread) throws IllegalThreadStateException {
+		if (thread == null) {
+			return;
+		}
+
+		final Thread ct = Thread.currentThread();
+		if (thread == ct) {
+			throw new IllegalThreadStateException("Trying to join current thread.");
+		}
+		boolean interrupted = false;
+		while (true) {
+			try {
+				thread.join();
+				break;
+			} catch (InterruptedException e) {
+				interrupted = true;
+			}
+		}
+		if (interrupted) {
+			//if we were interrupted, set the flag again
+			ct.interrupt();
+		}
 	}
 
 	/**
