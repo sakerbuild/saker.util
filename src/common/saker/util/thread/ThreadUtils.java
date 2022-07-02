@@ -789,6 +789,7 @@ public class ThreadUtils {
 	 *             If the current thread was interrupted while joining.
 	 * @throws IllegalThreadStateException
 	 *             If the argument is the current thread. (I.e. the thread tries to join itself)
+	 * @since saker.util 0.8.4
 	 */
 	public static void joinThreads(Thread thread) throws InterruptedException, IllegalThreadStateException {
 		if (thread == null) {
@@ -853,6 +854,7 @@ public class ThreadUtils {
 	 *            The thread to join. May be <code>null</code>, in which case this function call is a no-op.
 	 * @throws IllegalThreadStateException
 	 *             If the argument is the current thread. (I.e. the thread tries to join itself)
+	 * @since saker.util 0.8.4
 	 */
 	public static void joinThreadsNonInterruptible(Thread thread) throws IllegalThreadStateException {
 		if (thread == null) {
