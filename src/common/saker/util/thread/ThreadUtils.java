@@ -973,21 +973,19 @@ public class ThreadUtils {
 	/**
 	 * Sets the default thread factor that newly created concurrent runners should use.
 	 * <p>
-	 * The default thread factor is set to an {@linkplain InheritableThreadLocal inheritable thread local} variable,
-	 * therefore any value set here will be propagated to all started threads.
-	 * <p>
-	 * It is recommended that the thread factor is at least 2.
+	 * This method used to set an {@linkplain InheritableThreadLocal inheritable thread local} variable, whose value
+	 * would be returned by {@link #getDefaultThreadFactor()}. This feature is deprecated and that method returns a
+	 * fixed value based on the available processor count.
 	 * 
+	 * @deprecated This method doesn't do anything anymore. Not recommended to use, keep track of your desired thread
+	 *                 factor, and pass it to the appropriate configuration parameters instead of using an inheritable
+	 *                 thread local configuration.
 	 * @param threadfactor
 	 *            The thread factor to use.
-	 * @throws IllegalArgumentException
-	 *             If the argument is 0 or negative.
 	 */
-	public static void setInheritableDefaultThreadFactor(int threadfactor) throws IllegalArgumentException {
-		if (threadfactor <= 0) {
-			throw new IllegalArgumentException("Invalid thread factor: " + threadfactor);
-		}
-		DEFAULT_THREAD_FACTOR.set(threadfactor);
+	@Deprecated
+	public static void setInheritableDefaultThreadFactor(int threadfactor) {
+		//no-op
 	}
 
 	/**
@@ -1524,27 +1522,30 @@ public class ThreadUtils {
 
 	private static final OperationCancelMonitor MONITOR_INSTANCE_NEVER_CANCELLED = () -> false;
 
-	private static final ThreadLocal<Integer> DEFAULT_THREAD_FACTOR = new InheritableThreadLocal<Integer>() {
-		@Override
-		protected Integer initialValue() {
-			//set the min value to 2, so there is at least some concurrency
-			return Math.max(Runtime.getRuntime().availableProcessors() * 3 / 2, 2);
-		}
-	};
-
 	private static OperationCancelMonitor getDefaultMonitor() {
 		return MONITOR_INSTANCE_NEVER_CANCELLED;
 	}
 
+	//set the min value to 2, so there is at least some concurrency
+	private static final int DEFAULT_THREAD_FACTOR_INITIAL_VALUE = Math
+			.max(Runtime.getRuntime().availableProcessors() * 3 / 2, 2);
+
 	/**
 	 * Gets the default thread concurrency factor.
+	 * <p>
+	 * This method used to return the value of an {@linkplain InheritableThreadLocal inheritable thread local}, with an
+	 * initial value of <code>Math.max(Runtime.getRuntime().availableProcessors() * 3 / 2, 2)</code>. Now it returns
+	 * this fixed initial value.
 	 * 
+	 * @deprecated Not recommended to use, keep track of your desired thread factor, and pass it to the appropriate
+	 *                 configuration parameters instead of using an inheritable thread local configuration.
 	 * @return The thread factor.
 	 * @see #setInheritableDefaultThreadFactor(int)
 	 * @since saker.util 0.8.2
 	 */
+	@Deprecated
 	public static int getDefaultThreadFactor() {
-		return DEFAULT_THREAD_FACTOR.get();
+		return DEFAULT_THREAD_FACTOR_INITIAL_VALUE;
 	}
 
 	private static <T> Supplier<T> toSupplier(T[] items) {

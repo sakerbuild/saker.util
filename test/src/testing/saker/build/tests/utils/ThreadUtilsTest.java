@@ -35,7 +35,6 @@ public class ThreadUtilsTest extends SakerTestCase {
 	@Override
 	public void runTest(Map<String, String> parameters) throws Throwable {
 		// make sure the null value is handled
-		ThreadUtils.setInheritableDefaultThreadFactor(8);
 
 		Set<Object> res = Collections.synchronizedSet(new HashSet<>());
 		ThreadUtils.runParallelItems(ImmutableUtils.asUnmodifiableArrayList(null, 1, 2, 3), s -> {
