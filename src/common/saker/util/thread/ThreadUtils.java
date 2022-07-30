@@ -1645,19 +1645,19 @@ public class ThreadUtils {
 		}
 		//more than one item, and more than 1 thread requested
 
-		List<WorkerThread<T, C>> threads = new ArrayList<>(threadcount);
+		List<Thread> threads = new ArrayList<>(threadcount);
 
 		if (nameprefix == null) {
 			nameprefix = DEFAULT_NAME_PREFIX;
 		}
 
 		//unroll two loops
-		WorkerThread<T, C> t1 = new WorkerThread<>(group, nameprefix + 1, ehit, workobj, worker, contextsupplier,
-				monitor);
+		Thread t1 = new Thread(group, new WorkerThreadRunnable<>(ehit, workobj, worker, contextsupplier, monitor),
+				nameprefix + 1);
 		threads.add(t1);
 		t1.start();
-		WorkerThread<T, C> t2 = new WorkerThread<>(group, nameprefix + 2, ehit, secondworkobj, worker, contextsupplier,
-				monitor);
+		Thread t2 = new Thread(group, new WorkerThreadRunnable<>(ehit, secondworkobj, worker, contextsupplier, monitor),
+				nameprefix + 2);
 		threads.add(t2);
 		t2.start();
 		for (int i = 2; i < threadcount; i++) {
@@ -1665,8 +1665,8 @@ public class ThreadUtils {
 			if (nextobj == null || ehit.isAborted()) {
 				break;
 			}
-			WorkerThread<T, C> thread = new WorkerThread<>(group, nameprefix + (i + 1), ehit, nextobj, worker,
-					contextsupplier, monitor);
+			Thread thread = new Thread(group,
+					new WorkerThreadRunnable<>(ehit, nextobj, worker, contextsupplier, monitor), nameprefix + (i + 1));
 			threads.add(thread);
 			thread.start();
 		}
@@ -1675,7 +1675,7 @@ public class ThreadUtils {
 		throwOnException(ehit);
 	}
 
-	private static <T, C> void joinParallelThreads(List<WorkerThread<T, C>> threads, ExceptionHoldingSupplier<T> ehit) {
+	private static void joinParallelThreads(List<? extends Thread> threads, ExceptionHoldingSupplier<?> ehit) {
 		joinParallelThreads(threads::get, threads.size(), ehit);
 	}
 
@@ -1774,12 +1774,12 @@ public class ThreadUtils {
 		}
 	}
 
-	private static <T, C> void joinParallelThreads(Function<Integer, WorkerThread<T, C>> threadindexer, int count,
-			ExceptionHoldingSupplier<T> ehit) {
+	private static void joinParallelThreads(Function<Integer, ? extends Thread> threadindexer, int count,
+			ExceptionHoldingSupplier<?> ehit) {
 		final Thread ct = Thread.currentThread();
 		boolean interrupted = false;
 		for (int i = 0; i < count; i++) {
-			WorkerThread<T, C> t = threadindexer.apply(i);
+			Thread t = threadindexer.apply(i);
 			if (t == ct) {
 				throw new IllegalThreadStateException("Trying to join current thread.");
 			}
@@ -2253,7 +2253,7 @@ public class ThreadUtils {
 		volatile PoolState state = new PoolState();
 
 		private final int maxThreadCount;
-		private final ConcurrentPrependAccumulator<WorkerThread<ThrowingRunnable, Object>> threads = new ConcurrentPrependAccumulator<>();
+		private final ConcurrentPrependAccumulator<Thread> threads = new ConcurrentPrependAccumulator<>();
 		private final FixedThreadCountSupplier parallelSupplier = new FixedThreadCountSupplier();
 		private final boolean daemon;
 		private final String namePrefix;
@@ -2293,9 +2293,8 @@ public class ThreadUtils {
 						//spawn a new thread
 						//do this in a priviliged manner so inherited access control don't leak references 
 						AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
-							WorkerThread<ThrowingRunnable, Object> workthread = new WorkerThread<>(group,
-									namePrefix + nstate.threadCount, parallelSupplier, task, (t, c) -> t.run(), null,
-									monitor);
+							Thread workthread = new Thread(group, new WorkerThreadRunnable<>(parallelSupplier, task,
+									(t, c) -> t.run(), null, monitor), namePrefix + nstate.threadCount);
 							workthread.setDaemon(daemon);
 							threads.add(workthread);
 							workthread.start();
@@ -2404,7 +2403,7 @@ public class ThreadUtils {
 
 	private static class DynamicWorkPool implements ThreadWorkPool {
 		private final DynamicSmartSupplier<ThrowingRunnable> supplier = new DynamicSmartSupplier<>();
-		private final ConcurrentPrependAccumulator<WeakReference<WorkerThread<ThrowingRunnable, Object>>> threads = new ConcurrentPrependAccumulator<>();
+		private final ConcurrentPrependAccumulator<WeakReference<? extends Thread>> threads = new ConcurrentPrependAccumulator<>();
 		private final boolean daemon;
 		private final String namePrefix;
 		private final OperationCancelMonitor monitor;
@@ -2425,9 +2424,9 @@ public class ThreadUtils {
 			if (!success) {
 				//do this in a priviliged manner so inherited access control don't leak references 
 				AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
-					WorkerThread<ThrowingRunnable, Object> workthread = new WorkerThread<>(group,
-							namePrefix + (threadIdx.getAndIncrement() + 1), supplier, task, (t, c) -> t.run(), null,
-							monitor);
+					Thread workthread = new Thread(group,
+							new WorkerThreadRunnable<>(supplier, task, (t, c) -> t.run(), null, monitor),
+							namePrefix + (threadIdx.getAndIncrement() + 1));
 					workthread.setDaemon(daemon);
 					workthread.start();
 					threads.add(new WeakReference<>(workthread));
@@ -2920,7 +2919,7 @@ public class ThreadUtils {
 		}
 	}
 
-	private static class WorkerThread<T, C> extends Thread {
+	private static class WorkerThreadRunnable<T, C> implements Runnable {
 		private ExceptionHoldingSupplier<? extends T> it;
 		private ThrowingContextConsumer<? super T, ? super C> worker;
 
@@ -2929,10 +2928,9 @@ public class ThreadUtils {
 		private T workObject;
 		private Supplier<? extends C> contextSupplier;
 
-		public WorkerThread(ThreadGroup group, String name, ExceptionHoldingSupplier<T> it, T initworkobject,
+		public WorkerThreadRunnable(ExceptionHoldingSupplier<T> it, T initworkobject,
 				ThrowingContextConsumer<? super T, ? super C> worker, Supplier<? extends C> contextSupplier,
 				OperationCancelMonitor monitor) {
-			super(group, name);
 			this.it = it;
 			this.worker = worker;
 			this.monitor = monitor;
@@ -2942,6 +2940,7 @@ public class ThreadUtils {
 
 		@Override
 		public void run() {
+			Thread currentthread = Thread.currentThread();
 			C context = this.contextSupplier == null ? null : this.contextSupplier.get();
 			T workobj = this.workObject;
 			OperationCancelMonitor monitor = this.monitor;
@@ -2962,13 +2961,13 @@ public class ThreadUtils {
 
 			boolean interruptchecked = false;
 			while (!it.isAborted()) {
-				if (!interruptchecked && isInterrupted()) {
+				if (!interruptchecked && currentthread.isInterrupted()) {
 					interruptchecked = true;
 					it.cancelled("Interrupted.");
 					//continue instead of break as the supplier may choose not to abort the thread
 					continue;
 				}
-				workobj = it.get(this);
+				workobj = it.get(currentthread);
 				if (workobj == null) {
 					//no more items
 					break;
