@@ -36,22 +36,33 @@ public class ThreadUtilsTest extends SakerTestCase {
 	public void runTest(Map<String, String> parameters) throws Throwable {
 		// make sure the null value is handled
 
-		Set<Object> res = Collections.synchronizedSet(new HashSet<>());
-		ThreadUtils.runParallelItems(ImmutableUtils.asUnmodifiableArrayList(null, 1, 2, 3), s -> {
-			res.add(s);
-		});
-		assertEquals(res, setOf(null, 1, 2, 3));
+		{
+			Set<Object> res = Collections.synchronizedSet(new HashSet<>());
+			ThreadUtils.runParallelItems(ImmutableUtils.asUnmodifiableArrayList(null, 1, 2, 3), s -> {
+				res.add(s);
+			});
+			assertEquals(res, setOf(null, 1, 2, 3));
+		}
 
-		//test that interruption doesnt cause the work pool to throw an exception on close
-		try (ThreadWorkPool wp = ThreadUtils.newDynamicWorkPool()) {
-			wp.offer(() -> System.out.println("ThreadUtilsTest.runTest() 1"));
-			Thread.currentThread().interrupt();
+		{
+			//test that interruption doesnt cause the work pool to throw an exception on close
+			Set<Object> res = Collections.synchronizedSet(new HashSet<>());
+			try (ThreadWorkPool wp = ThreadUtils.newDynamicWorkPool()) {
+				wp.offer(() -> res.add(123));
+				Thread.currentThread().interrupt();
+
+			}
+			assertEquals(res, setOf(123));
 		}
 		//clear interrupt flag for further tests
 		Thread.interrupted();
-		try (ThreadWorkPool wp = ThreadUtils.newFixedWorkPool()) {
-			wp.offer(() -> System.out.println("ThreadUtilsTest.runTest() 2"));
-			Thread.currentThread().interrupt();
+		{
+			Set<Object> res = Collections.synchronizedSet(new HashSet<>());
+			try (ThreadWorkPool wp = ThreadUtils.newFixedWorkPool()) {
+				wp.offer(() -> res.add(456));
+				Thread.currentThread().interrupt();
+			}
+			assertEquals(res, setOf(456));
 		}
 
 		//clear interrupt flag for further tests

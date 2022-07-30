@@ -24,7 +24,8 @@ import java.util.List;
 import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.ServiceConfigurationError;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.LockSupport;
@@ -1058,7 +1059,7 @@ public class ThreadUtils {
 	 */
 	public static <T, C> void runParallelContextItems(Iterable<? extends T> items,
 			Supplier<? extends C> contextsupplier, ThrowingContextConsumer<? super T, ? super C> worker) {
-		runParallel(null, toSupplier(items), contextsupplier, -1, worker, null, null);
+		runParallel(DefaultNamePrefixThreadFactory.INSTANCE, toSupplier(items), contextsupplier, -1, worker, null);
 	}
 
 	/**
@@ -1601,6 +1602,18 @@ public class ThreadUtils {
 	private static <C, T> void runParallel(ThreadGroup group, Supplier<? extends T> it,
 			Supplier<? extends C> contextsupplier, int threadcount,
 			ThrowingContextConsumer<? super T, ? super C> worker, String nameprefix, OperationCancelMonitor monitor) {
+		ThreadFactory threadfactory;
+		if (nameprefix == null) {
+			threadfactory = new GroupDefaultNamePrefixThreadFactory(group);
+		} else {
+			threadfactory = new GroupNamePrefixThreadFactory(group, nameprefix);
+		}
+		runParallel(threadfactory, it, contextsupplier, threadcount, worker, monitor);
+	}
+
+	private static <C, T> void runParallel(ThreadFactory threadfactory, Supplier<? extends T> it,
+			Supplier<? extends C> contextsupplier, int threadcount,
+			ThrowingContextConsumer<? super T, ? super C> worker, OperationCancelMonitor monitor) {
 		if (it == null) {
 			return;
 		}
@@ -1645,17 +1658,13 @@ public class ThreadUtils {
 
 		List<Thread> threads = new ArrayList<>(threadcount);
 
-		if (nameprefix == null) {
-			nameprefix = DEFAULT_NAME_PREFIX;
-		}
-
 		//unroll two loops
-		Thread t1 = new Thread(group, new WorkerThreadRunnable<>(ehit, workobj, worker, contextsupplier, monitor),
-				nameprefix + 1);
+		Thread t1 = threadfactory
+				.newThread(new WorkerThreadRunnable<>(ehit, workobj, worker, contextsupplier, monitor));
 		threads.add(t1);
 		t1.start();
-		Thread t2 = new Thread(group, new WorkerThreadRunnable<>(ehit, secondworkobj, worker, contextsupplier, monitor),
-				nameprefix + 2);
+		Thread t2 = threadfactory
+				.newThread(new WorkerThreadRunnable<>(ehit, secondworkobj, worker, contextsupplier, monitor));
 		threads.add(t2);
 		t2.start();
 		for (int i = 2; i < threadcount; i++) {
@@ -1663,8 +1672,8 @@ public class ThreadUtils {
 			if (nextobj == null || ehit.isAborted()) {
 				break;
 			}
-			Thread thread = new Thread(group,
-					new WorkerThreadRunnable<>(ehit, nextobj, worker, contextsupplier, monitor), nameprefix + (i + 1));
+			Thread thread = threadfactory
+					.newThread(new WorkerThreadRunnable<>(ehit, nextobj, worker, contextsupplier, monitor));
 			threads.add(thread);
 			thread.start();
 		}
@@ -1961,7 +1970,90 @@ public class ThreadUtils {
 
 	}
 
+	private static final class GroupNamePrefixDaemonThreadFactory implements ThreadFactory {
+		private static final AtomicIntegerFieldUpdater<ThreadUtils.GroupNamePrefixDaemonThreadFactory> AIFU_counter = AtomicIntegerFieldUpdater
+				.newUpdater(ThreadUtils.GroupNamePrefixDaemonThreadFactory.class, "counter");
+		@SuppressWarnings("unused")
+		private volatile int counter;
+
+		private final ThreadGroup group;
+		private final String namePrefix;
+		private final boolean daemon;
+
+		public GroupNamePrefixDaemonThreadFactory(ThreadGroup group, String namePrefix, boolean daemon) {
+			this.group = group;
+			this.namePrefix = namePrefix;
+			this.daemon = daemon;
+		}
+
+		@Override
+		public Thread newThread(Runnable r) {
+			Thread thread = new Thread(group, r, namePrefix + AIFU_counter.incrementAndGet(this));
+			thread.setDaemon(daemon);
+			return thread;
+		}
+	}
+
+	private static final class GroupNamePrefixThreadFactory implements ThreadFactory {
+		private static final AtomicIntegerFieldUpdater<ThreadUtils.GroupNamePrefixThreadFactory> AIFU_counter = AtomicIntegerFieldUpdater
+				.newUpdater(ThreadUtils.GroupNamePrefixThreadFactory.class, "counter");
+		@SuppressWarnings("unused")
+		private volatile int counter;
+
+		private final ThreadGroup group;
+		private final String namePrefix;
+
+		public GroupNamePrefixThreadFactory(ThreadGroup group, String namePrefix) {
+			this.group = group;
+			this.namePrefix = namePrefix;
+		}
+
+		@Override
+		public Thread newThread(Runnable r) {
+			Thread thread = new Thread(group, r, namePrefix + AIFU_counter.incrementAndGet(this));
+			return thread;
+		}
+	}
+
+	private static final class GroupDefaultNamePrefixThreadFactory implements ThreadFactory {
+		private final ThreadGroup group;
+
+		public GroupDefaultNamePrefixThreadFactory(ThreadGroup group) {
+			this.group = group;
+		}
+
+		@Override
+		public Thread newThread(Runnable r) {
+			//pass through the default name prefix thread factory so the counter is shared
+			return DefaultNamePrefixThreadFactory.createWithGroup(group, r);
+		}
+	}
+
+	private static final class DefaultNamePrefixThreadFactory implements ThreadFactory {
+		private static final AtomicIntegerFieldUpdater<ThreadUtils.DefaultNamePrefixThreadFactory> AIFU_counter = AtomicIntegerFieldUpdater
+				.newUpdater(ThreadUtils.DefaultNamePrefixThreadFactory.class, "counter");
+		@SuppressWarnings("unused")
+		private volatile int counter;
+
+		//a single global instance is fine
+		public static final DefaultNamePrefixThreadFactory INSTANCE = new DefaultNamePrefixThreadFactory();
+
+		public DefaultNamePrefixThreadFactory() {
+		}
+
+		@Override
+		public Thread newThread(Runnable r) {
+			Thread thread = new Thread(r, DEFAULT_NAME_PREFIX + AIFU_counter.incrementAndGet(this));
+			return thread;
+		}
+
+		public static Thread createWithGroup(ThreadGroup group, Runnable r) {
+			return new Thread(group, r, DEFAULT_NAME_PREFIX + AIFU_counter.incrementAndGet(INSTANCE));
+		}
+	}
+
 	private static class FixedWorkPool implements ThreadWorkPool {
+
 		private class FixedThreadCountSupplier implements ExceptionHoldingSupplier<ThrowingRunnable> {
 			private final ReentrantLock lock = new ReentrantLock();
 			private final Condition cond = lock.newCondition();
@@ -2253,21 +2345,21 @@ public class ThreadUtils {
 		private final int maxThreadCount;
 		private final ConcurrentPrependAccumulator<Thread> threads = new ConcurrentPrependAccumulator<>();
 		private final FixedThreadCountSupplier parallelSupplier = new FixedThreadCountSupplier();
-		private final boolean daemon;
-		private final String namePrefix;
+		private final ThreadFactory threadFactory;
 		private final OperationCancelMonitor monitor;
-		private final ThreadGroup group;
 
 		private final ReentrantLock threadsStateNotifyLock = new ReentrantLock();
 		private final Condition threadsStateNotifyCondition = threadsStateNotifyLock.newCondition();
 
 		public FixedWorkPool(ThreadGroup group, int threadCount, OperationCancelMonitor monitor, String nameprefix,
 				boolean daemon) {
-			this.group = group;
+			this(new GroupNamePrefixDaemonThreadFactory(group, nameprefix, daemon), threadCount, monitor);
+		}
+
+		public FixedWorkPool(ThreadFactory threadFactory, int maxThreadCount, OperationCancelMonitor monitor) {
+			this.threadFactory = threadFactory;
+			this.maxThreadCount = maxThreadCount;
 			this.monitor = monitor;
-			this.namePrefix = nameprefix;
-			this.maxThreadCount = threadCount;
-			this.daemon = daemon;
 		}
 
 		@Override
@@ -2289,10 +2381,8 @@ public class ThreadUtils {
 					nstate = s.offerForNewThread();
 					if (ARFU_state.compareAndSet(this, s, nstate)) {
 						//spawn a new thread
-						Thread workthread = new Thread(group,
-								new WorkerThreadRunnable<>(parallelSupplier, task, (t, c) -> t.run(), null, monitor),
-								namePrefix + nstate.threadCount);
-						workthread.setDaemon(daemon);
+						Thread workthread = threadFactory.newThread(
+								new WorkerThreadRunnable<>(parallelSupplier, task, (t, c) -> t.run(), null, monitor));
 						threads.add(workthread);
 						workthread.start();
 						return;
@@ -2399,17 +2489,16 @@ public class ThreadUtils {
 	private static class DynamicWorkPool implements ThreadWorkPool {
 		private final DynamicSmartSupplier<ThrowingRunnable> supplier = new DynamicSmartSupplier<>();
 		private final ConcurrentPrependAccumulator<WeakReference<? extends Thread>> threads = new ConcurrentPrependAccumulator<>();
-		private final boolean daemon;
-		private final String namePrefix;
 		private final OperationCancelMonitor monitor;
-		private final ThreadGroup group;
-		private final AtomicInteger threadIdx = new AtomicInteger(0);
+		private final ThreadFactory threadFactory;
 
 		public DynamicWorkPool(ThreadGroup group, OperationCancelMonitor monitor, String namePrefix, boolean daemon) {
-			this.daemon = daemon;
-			this.namePrefix = namePrefix;
+			this(new GroupNamePrefixDaemonThreadFactory(group, namePrefix, daemon), monitor);
+		}
+
+		public DynamicWorkPool(ThreadFactory threadFactory, OperationCancelMonitor monitor) {
+			this.threadFactory = threadFactory;
 			this.monitor = monitor;
-			this.group = group;
 		}
 
 		@Override
@@ -2417,10 +2506,8 @@ public class ThreadUtils {
 			Objects.requireNonNull(task, "task");
 			boolean success = supplier.offer(task);
 			if (!success) {
-				Thread workthread = new Thread(group,
-						new WorkerThreadRunnable<>(supplier, task, (t, c) -> t.run(), null, monitor),
-						namePrefix + (threadIdx.getAndIncrement() + 1));
-				workthread.setDaemon(daemon);
+				Thread workthread = this.threadFactory
+						.newThread(new WorkerThreadRunnable<>(supplier, task, (t, c) -> t.run(), null, monitor));
 				workthread.start();
 				threads.add(new WeakReference<>(workthread));
 			}
