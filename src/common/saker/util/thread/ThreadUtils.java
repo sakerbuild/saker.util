@@ -18,8 +18,6 @@ package saker.util.thread;
 import java.io.PrintStream;
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
-import java.security.AccessController;
-import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -2291,15 +2289,12 @@ public class ThreadUtils {
 					nstate = s.offerForNewThread();
 					if (ARFU_state.compareAndSet(this, s, nstate)) {
 						//spawn a new thread
-						//do this in a priviliged manner so inherited access control don't leak references 
-						AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
-							Thread workthread = new Thread(group, new WorkerThreadRunnable<>(parallelSupplier, task,
-									(t, c) -> t.run(), null, monitor), namePrefix + nstate.threadCount);
-							workthread.setDaemon(daemon);
-							threads.add(workthread);
-							workthread.start();
-							return null;
-						});
+						Thread workthread = new Thread(group,
+								new WorkerThreadRunnable<>(parallelSupplier, task, (t, c) -> t.run(), null, monitor),
+								namePrefix + nstate.threadCount);
+						workthread.setDaemon(daemon);
+						threads.add(workthread);
+						workthread.start();
 						return;
 					}
 				}
@@ -2422,16 +2417,12 @@ public class ThreadUtils {
 			Objects.requireNonNull(task, "task");
 			boolean success = supplier.offer(task);
 			if (!success) {
-				//do this in a priviliged manner so inherited access control don't leak references 
-				AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
-					Thread workthread = new Thread(group,
-							new WorkerThreadRunnable<>(supplier, task, (t, c) -> t.run(), null, monitor),
-							namePrefix + (threadIdx.getAndIncrement() + 1));
-					workthread.setDaemon(daemon);
-					workthread.start();
-					threads.add(new WeakReference<>(workthread));
-					return null;
-				});
+				Thread workthread = new Thread(group,
+						new WorkerThreadRunnable<>(supplier, task, (t, c) -> t.run(), null, monitor),
+						namePrefix + (threadIdx.getAndIncrement() + 1));
+				workthread.setDaemon(daemon);
+				workthread.start();
+				threads.add(new WeakReference<>(workthread));
 			}
 		}
 
