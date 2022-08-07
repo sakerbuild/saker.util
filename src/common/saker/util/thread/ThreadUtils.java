@@ -1210,7 +1210,7 @@ public class ThreadUtils {
 	 * @return The work pool.
 	 */
 	public static ThreadWorkPool newFixedWorkPool(int threadCount, OperationCancelMonitor monitor) {
-		return newFixedWorkPool(null, threadCount, monitor);
+		return newFixedWorkPool((ThreadFactory) null, threadCount, monitor);
 	}
 
 	/**
@@ -1271,7 +1271,12 @@ public class ThreadUtils {
 	 */
 	public static ThreadWorkPool newFixedWorkPool(ThreadGroup group, int threadCount, OperationCancelMonitor monitor,
 			String nameprefix) {
-		return newFixedWorkPool(group, threadCount, monitor, nameprefix, Thread.currentThread().isDaemon());
+		Thread currentthread = Thread.currentThread();
+		if (group == null) {
+			//set the thread group to the current, so offered tasks doesn't get started on the offering thread groups, but on this one
+			group = currentthread.getThreadGroup();
+		}
+		return newFixedWorkPool(group, threadCount, monitor, nameprefix, currentthread.isDaemon());
 	}
 
 	/**
@@ -1335,6 +1340,37 @@ public class ThreadUtils {
 			group = Thread.currentThread().getThreadGroup();
 		}
 		return new FixedWorkPool(group, threadCount, monitor, nameprefix, daemon);
+	}
+
+	/**
+	 * Creates a new work pool that uses a fixed number of threads for task execution.
+	 * <p>
+	 * The threads are lazily started when new tasks are offered to the thread pool.
+	 * 
+	 * @param threadfactory
+	 *            The thread factory to use for creating new threads. May be <code>null</code> in which case the new
+	 *            threads are created and their {@linkplain Thread#setDaemon(boolean) daemon flag} and
+	 *            {@linkplain Thread#getThreadGroup() thread group} is set based on the thread that creates the pool.
+	 * @param threadCount
+	 *            The maximum number of threads that the thread pool spawns. Negative or 0 means the
+	 *            {@linkplain #setInheritableDefaultThreadFactor(int) default value}.
+	 * @param monitor
+	 *            Cancellation monitor for the tasks. May be <code>null</code>.
+	 * @return The work pool.
+	 * @since saker.util 0.8.4
+	 */
+	public static ThreadWorkPool newFixedWorkPool(ThreadFactory threadfactory, int threadCount,
+			OperationCancelMonitor monitor) {
+		if (threadCount < 0) {
+			threadCount = getDefaultThreadFactor();
+		}
+		if (monitor == null) {
+			monitor = getDefaultMonitor();
+		}
+		if (threadfactory == null) {
+			threadfactory = createDefaultThreadFactoryForkWorkPools();
+		}
+		return new FixedWorkPool(threadfactory, threadCount, monitor);
 	}
 
 	/**
@@ -1415,7 +1451,12 @@ public class ThreadUtils {
 	 */
 	public static ThreadWorkPool newDynamicWorkPool(ThreadGroup group, String nameprefix,
 			OperationCancelMonitor monitor) {
-		return newDynamicWorkPool(group, nameprefix, monitor, Thread.currentThread().isDaemon());
+		Thread currentthread = Thread.currentThread();
+		if (group == null) {
+			//set the thread group to the current, so offered tasks doesn't get started on the offering thread groups, but on this one
+			group = currentthread.getThreadGroup();
+		}
+		return newDynamicWorkPool(group, nameprefix, monitor, currentthread.isDaemon());
 	}
 
 	/**
@@ -1449,7 +1490,32 @@ public class ThreadUtils {
 			//set the thread group to the current, so offered tasks doesn't get started on the offering thread groups, but on this one
 			group = Thread.currentThread().getThreadGroup();
 		}
-		return new DynamicWorkPool(group, monitor, nameprefix, daemon);
+		return new DynamicWorkPool(group, nameprefix, daemon, monitor);
+	}
+
+	/**
+	 * Creates a new work pool that dynamically creates new threads when new tasks are posted.
+	 * <p>
+	 * The returned work pool will cache threads for some time, and dynamically allocate new ones if necessary. It will
+	 * also exit threads if they've not been used for some time.
+	 * 
+	 * @param threadfactory
+	 *            The thread factory to use for creating new threads. May be <code>null</code> in which case the new
+	 *            threads are created and their {@linkplain Thread#setDaemon(boolean) daemon flag} and
+	 *            {@linkplain Thread#getThreadGroup() thread group} is set based on the thread that creates the pool.
+	 * @param monitor
+	 *            Cancellation monitor for the tasks. May be <code>null</code>.
+	 * @return The created work pool.
+	 * @since saker.util 0.8.4
+	 */
+	public static ThreadWorkPool newDynamicWorkPool(ThreadFactory threadfactory, OperationCancelMonitor monitor) {
+		if (monitor == null) {
+			monitor = getDefaultMonitor();
+		}
+		if (threadfactory == null) {
+			threadfactory = createDefaultThreadFactoryForkWorkPools();
+		}
+		return new DynamicWorkPool(threadfactory, monitor);
 	}
 
 	/**
@@ -1864,6 +1930,12 @@ public class ThreadUtils {
 			//if we were interrupted, set the flag again
 			ct.interrupt();
 		}
+	}
+
+	private static ThreadFactory createDefaultThreadFactoryForkWorkPools() {
+		Thread currentthread = Thread.currentThread();
+		return new GroupNamePrefixDaemonThreadFactory(currentthread.getThreadGroup(), DEFAULT_NAME_PREFIX,
+				currentthread.isDaemon());
 	}
 
 	private static class DirectWorkPool implements ThreadWorkPool {
@@ -2492,7 +2564,7 @@ public class ThreadUtils {
 		private final OperationCancelMonitor monitor;
 		private final ThreadFactory threadFactory;
 
-		public DynamicWorkPool(ThreadGroup group, OperationCancelMonitor monitor, String namePrefix, boolean daemon) {
+		public DynamicWorkPool(ThreadGroup group, String namePrefix, boolean daemon, OperationCancelMonitor monitor) {
 			this(new GroupNamePrefixDaemonThreadFactory(group, namePrefix, daemon), monitor);
 		}
 
