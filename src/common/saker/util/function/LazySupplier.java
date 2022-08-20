@@ -15,7 +15,7 @@
  */
 package saker.util.function;
 
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.Semaphore;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -64,15 +64,12 @@ public final class LazySupplier<T> implements Supplier<T> {
 
 	private volatile Object state;
 
-//	private volatile Supplier<? extends T> initer;
-//	private T value;
-
 	private LazySupplier(Function<? super LazySupplier<? extends T>, T> initer) {
-		this.state = new State<>(() -> initer.apply(this));
+		this.state = new FunctionLazyState<>(initer);
 	}
 
 	private LazySupplier(Supplier<? extends T> initer) {
-		this.state = new State<>(initer);
+		this.state = new SupplierLazyState<>(initer);
 	}
 
 	/**
@@ -81,7 +78,7 @@ public final class LazySupplier<T> implements Supplier<T> {
 	 * @return <code>true</code> if the result is ready.
 	 */
 	public boolean isComputed() {
-		return !(state instanceof State);
+		return !(state instanceof LazyState);
 	}
 
 	/**
@@ -95,7 +92,7 @@ public final class LazySupplier<T> implements Supplier<T> {
 	@SuppressWarnings("unchecked")
 	public T getIfComputed() {
 		Object s = state;
-		if (s instanceof State) {
+		if (s instanceof LazyState) {
 			return null;
 		}
 		return (T) s;
@@ -106,18 +103,19 @@ public final class LazySupplier<T> implements Supplier<T> {
 	 * <p>
 	 * If the value of this lazy supplier has been already computed, or is being computed concurrently, this method
 	 * returns the computed value. If it hasn't been computed yet, and is not being concurrently computed, it will
-	 * return <code>null</code>, and prevent any future calls to this supplier to compute the result.
+	 * return <code>null</code>, and prevent the initialization of this supplier. (All future {@link #get()} and other
+	 * calls will return <code>null</code>.)
 	 * 
 	 * @return The computed value or <code>null</code> if not yet computed.
 	 */
 	@SuppressWarnings("unchecked")
 	public T getIfComputedPrevent() {
 		Object s = state;
-		if (s instanceof State<?>) {
-			State<? extends T> ss = (State<? extends T>) s;
+		if (s instanceof LazyState<?>) {
+			LazyState<T> ss = (LazyState<T>) s;
 			T val;
 
-			ss.lock.lock();
+			ss.acquireLock();
 			try {
 				Object cs = this.state;
 				if (cs == ss) {
@@ -127,7 +125,7 @@ public final class LazySupplier<T> implements Supplier<T> {
 					val = (T) cs;
 				}
 			} finally {
-				ss.lock.unlock();
+				ss.releaseLock();
 			}
 
 			return val;
@@ -139,21 +137,21 @@ public final class LazySupplier<T> implements Supplier<T> {
 	@Override
 	public T get() {
 		Object s = state;
-		if (s instanceof State<?>) {
-			State<? extends T> ss = (State<? extends T>) s;
+		if (s instanceof LazyState<?>) {
+			LazyState<T> ss = (LazyState<T>) s;
 			T val;
 
-			ss.lock.lock();
+			ss.acquireLock();
 			try {
 				Object cs = this.state;
 				if (cs == ss) {
-					val = ss.initer.get();
+					val = ss.getInitialValue(this);
 					this.state = val;
 				} else {
 					val = (T) cs;
 				}
 			} finally {
-				ss.lock.unlock();
+				ss.releaseLock();
 			}
 
 			return val;
@@ -164,19 +162,63 @@ public final class LazySupplier<T> implements Supplier<T> {
 	@Override
 	public String toString() {
 		Object s = state;
-		if (s instanceof State<?>) {
+		if (s instanceof LazyState<?>) {
 			return getClass().getSimpleName() + "[not yet computed]";
 		}
 		return getClass().getSimpleName() + "[" + s + "]";
 	}
 
-	private static class State<T> {
-		protected final Supplier<? extends T> initer;
-		protected final ReentrantLock lock;
+	private abstract static class LazyState<T> {
+		//Semaphore as lock, as we deliberately don't want reentrancy
+		protected final Semaphore lock = new Semaphore(1);
+		/**
+		 * The owner of the lock, checked to avoid recursive calls to the initializer function.
+		 */
+		protected Thread owner;
 
-		public State(Supplier<? extends T> initer) {
-			this.initer = initer;
-			this.lock = new ReentrantLock();
+		public abstract T getInitialValue(LazySupplier<T> supplier);
+
+		protected void acquireLock() {
+			Thread currentthread = Thread.currentThread();
+			if (!lock.tryAcquire()) {
+				if (owner == currentthread) {
+					throw new IllegalThreadStateException("LazySupplier initializer method called recursively.");
+				}
+				lock.acquireUninterruptibly();
+			}
+			owner = currentthread;
+		}
+
+		protected void releaseLock() {
+			owner = null;
+			lock.release();
 		}
 	}
+
+	private static class SupplierLazyState<T> extends LazyState<T> {
+		protected final Supplier<? extends T> initer;
+
+		public SupplierLazyState(Supplier<? extends T> initer) {
+			this.initer = initer;
+		}
+
+		@Override
+		public T getInitialValue(LazySupplier<T> supplier) {
+			return initer.get();
+		}
+	}
+
+	private static class FunctionLazyState<T> extends LazyState<T> {
+		protected final Function<? super LazySupplier<T>, ? extends T> initer;
+
+		public FunctionLazyState(Function<? super LazySupplier<T>, ? extends T> initer) {
+			this.initer = initer;
+		}
+
+		@Override
+		public T getInitialValue(LazySupplier<T> supplier) {
+			return initer.apply(supplier);
+		}
+	}
+
 }
