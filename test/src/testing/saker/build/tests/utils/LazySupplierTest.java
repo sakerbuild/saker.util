@@ -1,10 +1,13 @@
 package testing.saker.build.tests.utils;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 import saker.util.function.LazySupplier;
+import saker.util.thread.ThreadUtils;
 import testing.saker.SakerTest;
 import testing.saker.SakerTestCase;
 
@@ -14,6 +17,16 @@ public class LazySupplierTest extends SakerTestCase {
 
 	public static String getter() {
 		counter.getAndIncrement();
+		return "abc";
+	}
+
+	public static String sleepingGetter() {
+		counter.getAndIncrement();
+		try {
+			Thread.sleep(500);
+		} catch (InterruptedException e) {
+			throw new RuntimeException(e);
+		}
 		return "abc";
 	}
 
@@ -59,6 +72,7 @@ public class LazySupplierTest extends SakerTestCase {
 			LazySupplier<String> s = LazySupplier.of(ls -> ls.get());
 			assertException(IllegalThreadStateException.class, () -> s.get());
 		}
+
 		{
 			LazySupplier<String> s = LazySupplier.of(new Supplier<String>() {
 				int c = 0;
@@ -74,6 +88,19 @@ public class LazySupplierTest extends SakerTestCase {
 			//fails the first time, but can calculate it the second time
 			assertException(FailException.class, () -> s.get());
 			assertEquals(s.get(), "val");
+		}
+
+		{
+			AtomicInteger cc = new AtomicInteger();
+			LazySupplier<String> s = LazySupplier.of(LazySupplierTest::sleepingGetter);
+			List<Integer> dummyitems = Arrays.asList(new Integer[16]);
+			ThreadUtils.runParallelItems(dummyitems, i -> {
+				assertEquals(s.get(), "abc");
+				cc.getAndIncrement();
+			});
+			assertEquals(s.get(), "abc");
+			assertEquals(counter.getAndSet(0), 1);
+			assertEquals(cc.get(), dummyitems.size());
 		}
 	}
 

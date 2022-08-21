@@ -15,7 +15,7 @@
  */
 package saker.util.function;
 
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.locks.AbstractQueuedSynchronizer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -168,34 +168,67 @@ public final class LazySupplier<T> implements Supplier<T> {
 		return getClass().getSimpleName() + "[" + s + "]";
 	}
 
-	private abstract static class LazyState<T> {
-		//Semaphore as lock, as we deliberately don't want reentrancy
-		protected final Semaphore lock = new Semaphore(1);
-		/**
-		 * The owner of the lock, checked to avoid recursive calls to the initializer function.
-		 */
-		protected Thread owner;
+	//extend from AbstractQueuedSynchronizer to avoid allocating a Semaphore for synchronization
+	//results in fewer object allocations
+	private abstract static class LazyState<T> extends AbstractQueuedSynchronizer {
+		private static final long serialVersionUID = 1L;
+
+		private static final int STATE_AVAILABLE = 1;
+		private static final int STATE_LOCKED = 0;
 
 		public abstract T getInitialValue(LazySupplier<T> supplier);
 
+		public LazyState() {
+			//set permits for synchronization
+			setState(STATE_AVAILABLE);
+		}
+
 		protected void acquireLock() {
 			Thread currentthread = Thread.currentThread();
-			if (!lock.tryAcquire()) {
-				if (owner == currentthread) {
+			if (!tryAcquire()) {
+				if (getExclusiveOwnerThread() == currentthread) {
 					throw new IllegalThreadStateException("LazySupplier initializer method called recursively.");
 				}
-				lock.acquireUninterruptibly();
+				acquireUninterruptibly();
 			}
-			owner = currentthread;
+			setExclusiveOwnerThread(currentthread);
 		}
 
 		protected void releaseLock() {
-			owner = null;
-			lock.release();
+			setExclusiveOwnerThread(null);
+			release(0); // arg is ignored
 		}
+
+		@Override
+		protected boolean tryRelease(int ignored) {
+			return compareAndSetState(STATE_LOCKED, STATE_AVAILABLE);
+		}
+
+		@Override
+		protected boolean tryAcquire(int ignored) {
+			return compareAndSetState(STATE_AVAILABLE, STATE_LOCKED);
+		}
+
+		private final boolean tryAcquire() {
+			return compareAndSetState(STATE_AVAILABLE, STATE_LOCKED);
+		}
+
+		private final void acquireUninterruptibly() {
+			acquire(0); // arg is ignored
+		}
+
+		@Override
+		public String toString() {
+			StringBuilder builder = new StringBuilder(getClass().getSimpleName());
+			builder.append("[]");
+			return builder.toString();
+		}
+
 	}
 
 	private static class SupplierLazyState<T> extends LazyState<T> {
+		private static final long serialVersionUID = 1L;
+
 		protected final Supplier<? extends T> initer;
 
 		public SupplierLazyState(Supplier<? extends T> initer) {
@@ -209,6 +242,8 @@ public final class LazySupplier<T> implements Supplier<T> {
 	}
 
 	private static class FunctionLazyState<T> extends LazyState<T> {
+		private static final long serialVersionUID = 1L;
+
 		protected final Function<? super LazySupplier<T>, ? extends T> initer;
 
 		public FunctionLazyState(Function<? super LazySupplier<T>, ? extends T> initer) {
