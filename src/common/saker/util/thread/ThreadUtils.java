@@ -15,6 +15,8 @@
  */
 package saker.util.thread;
 
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.PrintStream;
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
@@ -25,9 +27,12 @@ import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.ServiceConfigurationError;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+import java.util.concurrent.locks.AbstractQueuedSynchronizer;
 import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
@@ -1583,6 +1588,18 @@ public class ThreadUtils {
 	public static int dumpThreadGroupStackTraces(PrintStream ps, ThreadGroup threadgroup) throws NullPointerException {
 		ps.println(threadgroup + ": ");
 		return dumpAllThreadStackTraces(ps, t -> hasParentThreadGroup(t, threadgroup));
+	}
+
+	/**
+	 * Creates a new non-reentrant {@link Lock} that can only be exclusively held by a single thread.
+	 * <p>
+	 * The lock will throw an {@link IllegalThreadStateException} in case reentrant locking is attempted.
+	 * 
+	 * @return The new exclusive lock.
+	 * @since saker.util 0.8.4
+	 */
+	public static Lock newExclusiveLock() {
+		return new ExclusiveLock();
 	}
 
 	private static final OperationCancelMonitor MONITOR_INSTANCE_NEVER_CANCELLED = () -> false;
@@ -3157,6 +3174,88 @@ public class ThreadUtils {
 			} finally {
 				lock.unlock();
 			}
+		}
+	}
+
+	private static final class ExclusiveLock extends AbstractQueuedSynchronizer implements Lock {
+		private static final long serialVersionUID = 1L;
+
+		private static final int STATE_AVAILABLE = 0;
+		private static final int STATE_LOCKED = 1;
+
+		@Override
+		public void unlock() {
+			release(0);
+		}
+
+		@Override
+		protected boolean tryRelease(int ignored) {
+			if (getExclusiveOwnerThread() != Thread.currentThread()) {
+				throw new IllegalMonitorStateException("Exclusive lock is not owned by current thread.");
+			}
+			if (!compareAndSetState(STATE_LOCKED, STATE_AVAILABLE)) {
+				return false;
+			}
+			setExclusiveOwnerThread(null);
+			return true;
+		}
+
+		@Override
+		protected boolean tryAcquire(int ignored) {
+			if (compareAndSetState(STATE_AVAILABLE, STATE_LOCKED)) {
+				setExclusiveOwnerThread(Thread.currentThread());
+				return true;
+			}
+			checkReentrancy();
+			return false;
+		}
+
+		@Override
+		public boolean tryLock(long time, TimeUnit unit) throws InterruptedException {
+			if (!tryAcquireNanos(0, unit.toNanos(time))) {
+				return false;
+			}
+			return true;
+		}
+
+		@Override
+		public boolean tryLock() {
+			if (!tryAcquire(0)) {
+				return false;
+			}
+			return true;
+		}
+
+		@Override
+		public Condition newCondition() {
+			return new ConditionObject();
+		}
+
+		@Override
+		public void lockInterruptibly() throws InterruptedException {
+			acquireInterruptibly(0);
+		}
+
+		@Override
+		public void lock() {
+			acquire(0);
+		}
+
+		@Override
+		protected boolean isHeldExclusively() {
+			return getExclusiveOwnerThread() == Thread.currentThread();
+		}
+
+		private void checkReentrancy() {
+			if (getExclusiveOwnerThread() == Thread.currentThread()) {
+				throw new IllegalThreadStateException("Reentrant attempt for acquiring exclusive lock.");
+			}
+		}
+
+		//serialization is really not recommended by us for concurrency objects, but handle it here nonetheless
+		private void readObject(ObjectInputStream s) throws IOException, ClassNotFoundException {
+			s.defaultReadObject();
+			setState(STATE_AVAILABLE); // reset to unlocked state
 		}
 	}
 
