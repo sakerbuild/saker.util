@@ -60,25 +60,18 @@ public class ThreadUtilsTest extends SakerTestCase {
 		Thread.interrupted();
 		{
 			Set<Object> res = Collections.synchronizedSet(new HashSet<>());
+			Semaphore sem = new Semaphore(0);
 			try (ThreadWorkPool wp = ThreadUtils.newFixedWorkPool()) {
-				Semaphore sem = new Semaphore(0);
 				wp.offer(() -> {
 					sem.release();
 					res.add(456);
-					assertException(InterruptedException.class, () -> {
-						sem.acquire();
-						//interruption might not get recognized in acquire(), but should arrive during this task
-						if (Thread.interrupted()) {
-							throw new InterruptedException();
-						}
-					});
+					assertException(InterruptedException.class, () -> sem.acquire());
 				});
 
 				//interrupt after the runnable is accepted, otherwise we might interrupt the pool
 				//after/before the runnable, and get a ParallelExecutionCancelledException 
 				sem.acquire();
 				Thread.currentThread().interrupt();
-				sem.release();
 			}
 			assertEquals(res, setOf(456));
 		}
