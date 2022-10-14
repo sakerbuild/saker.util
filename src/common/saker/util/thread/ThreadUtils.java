@@ -2023,6 +2023,17 @@ public class ThreadUtils {
 		}
 	}
 
+	static {
+		//the following code ensures that the classes are loaded
+		//along with the ThreadUtils class
+		//pre-loading these classes can be necessary, as if the actual thread that is loading
+		//these classes get interrupted, then the class loading may fail based on the used classloader
+		//therefore we load them now, by creating a reference to them
+		@SuppressWarnings("unused")
+		Class<?> c = StateNode.class;
+		c = ExceptionState.class;
+	}
+
 	private static class ExceptionState {
 		public static final ExceptionState EMPTY = new ExceptionState(null, null, null);
 
