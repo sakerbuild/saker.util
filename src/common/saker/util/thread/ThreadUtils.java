@@ -1829,7 +1829,7 @@ public class ThreadUtils {
 				continue;
 			}
 			if (t == ct) {
-				//put back to join later
+				//put back to join later (possibly on another thread)
 				threads.add(tref);
 				throw new IllegalThreadStateException("Trying to join current thread.");
 			}
@@ -1839,18 +1839,16 @@ public class ThreadUtils {
 					break;
 				} catch (InterruptedException e) {
 					// we got interrupted during joining
-					// shut down the remaining threads
-					if (!interrupted) {
-						t.interrupt();
-						for (Iterator<? extends R> it = threads.iterator(); it.hasNext();) {
-							R tref2 = it.next();
-							Thread t2 = tref2.get();
-							if (t2 != null) {
-								t2.interrupt();
-							}
+					// propagate interrupt to the remaining threads
+					t.interrupt();
+					for (Iterator<? extends R> it = threads.iterator(); it.hasNext();) {
+						R tref2 = it.next();
+						Thread t2 = tref2.get();
+						if (t2 != null) {
+							t2.interrupt();
 						}
-						interrupted = true;
 					}
+					interrupted = true;
 				}
 				// join this thread again, we were just signaled interruption
 			}
@@ -1879,14 +1877,12 @@ public class ThreadUtils {
 					break;
 				} catch (InterruptedException e) {
 					// we got interrupted during joining
-					// shut down the remaining threads
-					if (!interrupted) {
-						t.interrupt();
-						for (int j = i + 1; j < count; j++) {
-							threadindexer.apply(j).interrupt();
-						}
-						interrupted = true;
+					// propagate interrupt to the remaining threads
+					t.interrupt();
+					for (int j = i + 1; j < count; j++) {
+						threadindexer.apply(j).interrupt();
 					}
+					interrupted = true;
 				}
 				// join this thread again, we were just signaled interruption
 			}

@@ -19,9 +19,12 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
+import saker.util.DateUtils;
 import saker.util.ImmutableUtils;
 import saker.util.thread.ThreadUtils;
 import saker.util.thread.ThreadUtils.ThreadWorkPool;
@@ -87,6 +90,84 @@ public class ThreadUtilsTest extends SakerTestCase {
 			});
 		}
 		assertFalse(Thread.currentThread().isInterrupted());
+
+		runParallelMultiInterruptTest();
+	}
+
+	/**
+	 * Checks that all interrupts are forwarded to the runners
+	 */
+	private static void runParallelMultiInterruptTest() throws Exception {
+		final int INTERRUPT_COUNT = 10;
+		Thread currentthread = Thread.currentThread();
+		for (int threadcount = 1; threadcount <= 10; threadcount++) {
+			AtomicInteger interruptcounter = new AtomicInteger();
+			System.out.println("Run with " + threadcount + " threads");
+			Semaphore[] semaphores = new Semaphore[threadcount];
+			for (int i = 0; i < semaphores.length; i++) {
+				semaphores[i] = new Semaphore(0);
+			}
+			Thread.interrupted(); // clear flag of the current thread
+
+			Runnable interruptorrunnable = () -> {
+				for (int intidx = 0; intidx < INTERRUPT_COUNT; intidx++) {
+					try {
+						//acquire all semaphores before interrupting the current thread
+						for (int semidx = 0; semidx < semaphores.length; semidx++) {
+							semaphores[semidx].acquire();
+						}
+					} catch (InterruptedException e) {
+						throw new RuntimeException(e);
+					}
+					currentthread.interrupt();
+				}
+			};
+
+			Thread interruptor = ThreadUtils.startDaemonThread(interruptorrunnable);
+			Runnable[] runnables = new Runnable[threadcount];
+			for (int i = 0; i < runnables.length; i++) {
+				Semaphore sem = semaphores[i];
+				int runidx = i;
+				runnables[i] = () -> {
+					for (int intidx = 0; intidx < INTERRUPT_COUNT; intidx++) {
+						System.out.println("Start[" + intidx + "] of runnable[" + runidx + "]");
+						sem.release();
+						try {
+							//timeout so test doesn't halt forever
+							Thread.sleep(10 * DateUtils.MS_PER_SECOND);
+							fail("should've gotten interrupted");
+						} catch (InterruptedException e) {
+							//good
+							System.out.println("Interrupted[" + intidx + "]: " + e);
+							interruptcounter.incrementAndGet();
+						} catch (Throwable e) {
+							//fail, release semaphores so test doesnt halt
+							sem.release(Integer.MAX_VALUE / 2);
+							throw e;
+						}
+					}
+				};
+			}
+			//set the thread count, so all runnables run concurrently
+			ThreadUtils.parallelRunner().setThreadCount(threadcount).runRunnables(runnables);
+			Thread.interrupted(); // clear flag for join
+			interruptor.join();
+
+			assertEquals(interruptcounter.get(), threadcount * INTERRUPT_COUNT);
+
+			//check that the dynamic work pool works the same way
+			interruptcounter.set(0);
+			try (ThreadWorkPool wp = ThreadUtils.newDynamicWorkPool()) {
+				interruptor = ThreadUtils.startDaemonThread(interruptorrunnable);
+				for (Runnable run : runnables) {
+					wp.offer(() -> run.run());
+				}
+			}
+			Thread.interrupted(); // clear flag for join
+			interruptor.join();
+
+			assertEquals(interruptcounter.get(), threadcount * INTERRUPT_COUNT);
+		}
 	}
 
 	private static void testThreadPoolAPI(Supplier<? extends ThreadWorkPool> poolcreator, boolean direct)
