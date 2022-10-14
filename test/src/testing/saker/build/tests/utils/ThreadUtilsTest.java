@@ -65,12 +65,14 @@ public class ThreadUtilsTest extends SakerTestCase {
 				wp.offer(() -> {
 					sem.release();
 					res.add(456);
+					sem.acquireUninterruptibly();
 				});
 
 				//interrupt after the runnable is accepted, otherwise we might interrupt the pool
 				//after/before the runnable, and get a ParallelExecutionCancelledException 
 				sem.acquire();
 				Thread.currentThread().interrupt();
+				sem.release();
 			}
 			assertEquals(res, setOf(456));
 		}
