@@ -65,7 +65,13 @@ public class ThreadUtilsTest extends SakerTestCase {
 				wp.offer(() -> {
 					sem.release();
 					res.add(456);
-					assertException(InterruptedException.class, () -> sem.acquire());
+					assertException(InterruptedException.class, () -> {
+						sem.acquire();
+						//interruption might not get recognized in acquire(), but should arrive during this task
+						if (Thread.interrupted()) {
+							throw new InterruptedException();
+						}
+					});
 				});
 
 				//interrupt after the runnable is accepted, otherwise we might interrupt the pool
