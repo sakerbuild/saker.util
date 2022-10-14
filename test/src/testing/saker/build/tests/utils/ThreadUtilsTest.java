@@ -96,7 +96,7 @@ public class ThreadUtilsTest extends SakerTestCase {
 					try {
 						sem.release();
 						res.add(456);
-						assertException(InterruptedException.class, () -> sem.acquire());
+						assertException(InterruptedException.class, () -> Thread.sleep(10 * DateUtils.MS_PER_SECOND));
 					} catch (Throwable e) {
 						e.printStackTrace();
 						throw e;
