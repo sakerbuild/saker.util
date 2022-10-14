@@ -56,25 +56,7 @@ public class ThreadUtilsTest extends SakerTestCase {
 			}
 			assertEquals(res, setOf(123));
 		}
-		//clear interrupt flag for further tests
-		Thread.interrupted();
-		{
-			Set<Object> res = Collections.synchronizedSet(new HashSet<>());
-			Semaphore sem = new Semaphore(0);
-			try (ThreadWorkPool wp = ThreadUtils.newFixedWorkPool()) {
-				wp.offer(() -> {
-					sem.release();
-					res.add(456);
-					assertException(InterruptedException.class, () -> sem.acquire());
-				});
-
-				//interrupt after the runnable is accepted, otherwise we might interrupt the pool
-				//after/before the runnable, and get a ParallelExecutionCancelledException 
-				sem.acquire();
-				Thread.currentThread().interrupt();
-			}
-			assertEquals(res, setOf(456));
-		}
+		testInterruptBeforeClose();
 
 		//clear interrupt flag for further tests
 		Thread.interrupted();
@@ -100,6 +82,36 @@ public class ThreadUtilsTest extends SakerTestCase {
 		assertFalse(Thread.currentThread().isInterrupted());
 
 		runParallelMultiInterruptTest();
+	}
+
+	private static void testInterruptBeforeClose() throws InterruptedException, AssertionError {
+		//clear interrupt flag for further tests
+		Thread.interrupted();
+		{
+			Set<Object> res = Collections.synchronizedSet(new HashSet<>());
+			Semaphore sem = new Semaphore(0);
+			try (ThreadWorkPool wp = ThreadUtils.newFixedWorkPool()) {
+				wp.offer(() -> {
+					System.out.println("ThreadUtilsTest.testInterruptBeforeClose() task enter");
+					try {
+						sem.release();
+						res.add(456);
+						assertException(InterruptedException.class, () -> sem.acquire());
+					} catch (Throwable e) {
+						e.printStackTrace();
+						throw e;
+					} finally {
+						System.out.println("ThreadUtilsTest.testInterruptBeforeClose() task exit");
+					}
+				});
+
+				//interrupt after the runnable is accepted, otherwise we might interrupt the pool
+				//after/before the runnable, and get a ParallelExecutionCancelledException 
+				sem.acquire();
+				Thread.currentThread().interrupt();
+			}
+			assertEquals(res, setOf(456));
+		}
 	}
 
 	/**
