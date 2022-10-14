@@ -20,7 +20,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
@@ -62,7 +61,15 @@ public class ThreadUtilsTest extends SakerTestCase {
 		{
 			Set<Object> res = Collections.synchronizedSet(new HashSet<>());
 			try (ThreadWorkPool wp = ThreadUtils.newFixedWorkPool()) {
-				wp.offer(() -> res.add(456));
+				Semaphore sem = new Semaphore(0);
+				wp.offer(() -> {
+					sem.release();
+					res.add(456);
+				});
+
+				//interrupt after the runnable is accepted, otherwise we might interrupt the pool
+				//after/before the runnable, and get a ParallelExecutionCancelledException 
+				sem.acquire();
 				Thread.currentThread().interrupt();
 			}
 			assertEquals(res, setOf(456));
@@ -123,7 +130,6 @@ public class ThreadUtilsTest extends SakerTestCase {
 				}
 			};
 
-			Thread interruptor = ThreadUtils.startDaemonThread(interruptorrunnable);
 			Runnable[] runnables = new Runnable[threadcount];
 			for (int i = 0; i < runnables.length; i++) {
 				Semaphore sem = semaphores[i];
@@ -148,7 +154,9 @@ public class ThreadUtilsTest extends SakerTestCase {
 					}
 				};
 			}
+
 			//set the thread count, so all runnables run concurrently
+			Thread interruptor = ThreadUtils.startDaemonThread(interruptorrunnable);
 			ThreadUtils.parallelRunner().setThreadCount(threadcount).runRunnables(runnables);
 			Thread.interrupted(); // clear flag for join
 			interruptor.join();
@@ -156,12 +164,31 @@ public class ThreadUtilsTest extends SakerTestCase {
 			assertEquals(interruptcounter.get(), threadcount * INTERRUPT_COUNT);
 
 			//check that the dynamic work pool works the same way
+			for (int i = 0; i < runnables.length; i++) {
+				semaphores[i].drainPermits();
+			}
 			interruptcounter.set(0);
-			try (ThreadWorkPool wp = ThreadUtils.newDynamicWorkPool()) {
-				interruptor = ThreadUtils.startDaemonThread(interruptorrunnable);
+			try (ThreadWorkPool wp = ThreadUtils.newDynamicWorkPool("DYN-INT-TEST-")) {
 				for (Runnable run : runnables) {
 					wp.offer(() -> run.run());
 				}
+				interruptor = ThreadUtils.startDaemonThread(interruptorrunnable);
+			}
+			Thread.interrupted(); // clear flag for join
+			interruptor.join();
+
+			assertEquals(interruptcounter.get(), threadcount * INTERRUPT_COUNT);
+
+			//check that the fixed work pool works the same way
+			for (int i = 0; i < runnables.length; i++) {
+				semaphores[i].drainPermits();
+			}
+			interruptcounter.set(0);
+			try (ThreadWorkPool wp = ThreadUtils.newFixedWorkPool(threadcount, "FIX-INT-TEST-")) {
+				for (Runnable run : runnables) {
+					wp.offer(() -> run.run());
+				}
+				interruptor = ThreadUtils.startDaemonThread(interruptorrunnable);
 			}
 			Thread.interrupted(); // clear flag for join
 			interruptor.join();

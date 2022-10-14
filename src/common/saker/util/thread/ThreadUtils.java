@@ -2498,7 +2498,7 @@ public class ThreadUtils {
 			ARFU_state.updateAndGet(this, PoolState::close);
 			parallelSupplier.notifyStateChange();
 
-			waitThreadSync();
+			waitThreadSyncPropagateInterrupt();
 		}
 
 		@Override
@@ -2552,6 +2552,37 @@ public class ThreadUtils {
 						break;
 					}
 					threadsStateNotifyCondition.awaitUninterruptibly();
+				}
+			} finally {
+				threadsStateNotifyLock.unlock();
+			}
+		}
+
+		private void waitThreadSyncPropagateInterrupt() {
+			threadsStateNotifyLock.lock();
+			try {
+				while (true) {
+					PoolState s = this.state;
+					if (!s.isAnyTaskRunning()) {
+						if (s.hasException()) {
+							if (ARFU_state.compareAndSet(this, s, s.withoutException())) {
+								ParallelExecutionException exc = s.constructException();
+								throw exc;
+							}
+							//failed to swap the state, retry
+							continue;
+						}
+						//no exception, we can just break out of the waiting loop
+						break;
+					}
+					try {
+						threadsStateNotifyCondition.await();
+					} catch (InterruptedException e) {
+						for (Iterator<Thread> it = threads.iterator(); it.hasNext();) {
+							Thread t = it.next();
+							t.interrupt();
+						}
+					}
 				}
 			} finally {
 				threadsStateNotifyLock.unlock();
