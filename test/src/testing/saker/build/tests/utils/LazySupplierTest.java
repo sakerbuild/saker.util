@@ -102,6 +102,9 @@ public class LazySupplierTest extends SakerTestCase {
 			assertEquals(counter.getAndSet(0), 1);
 			assertEquals(cc.get(), dummyitems.size());
 		}
+		{
+			assertEquals(123 * 2, LazySupplier.of(123, i -> i * 2).get());
+		}
 	}
 
 	private static class FailException extends RuntimeException {
