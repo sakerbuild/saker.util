@@ -42,6 +42,12 @@ public class ConcatInputStreamTest extends SakerTestCase {
 			assertEquals(StreamUtils.readStreamStringFully(is), "abcdef");
 		}
 		{
+			//skip null stream
+			ConcatInputStream is = new ConcatInputStream(null, new UnsyncByteArrayInputStream("abc".getBytes()), null,
+					new UnsyncByteArrayInputStream("def".getBytes()), null);
+			assertEquals(StreamUtils.readStreamStringFully(is), "abcdef");
+		}
+		{
 			//read one by one
 			ConcatInputStream is = new ConcatInputStream(new UnsyncByteArrayInputStream("abc".getBytes()),
 					new UnsyncByteArrayInputStream("def".getBytes()));
