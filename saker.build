@@ -141,16 +141,6 @@ install(){
 	$export = export()
 	nest.local.install($export[bundlepaths])
 }
-upload() {
-	$export = include(export, Path: saker.build)
-	include(Path: secret/secrets.build)
-	nest.server.upload(
-		Bundles: $export[bundlepaths],
-		APIKey: global(saker.util.UPLOAD_API_KEY),
-		APISecret: global(saker.util.UPLOAD_API_SECRET),
-		Overwrite: true,
-	)
-}
 test(
 	in jreversion = 8,
 ){
